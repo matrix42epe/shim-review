@@ -1,0 +1,5 @@
+2018-05-16T14:31:34.3354090Z ##[section]Starting: Post Job Cleanup
+2018-05-16T14:31:34.3567380Z Cleaning any cached credential from repository: M42Grub (Git)
+2018-05-16T14:31:34.3603980Z ##[command]git remote set-url origin https://matrix42.visualstudio.com/IM/_git/M42Grub
+2018-05-16T14:31:34.4778830Z ##[command]git remote set-url --push origin https://matrix42.visualstudio.com/IM/_git/M42Grub
+2018-05-16T14:31:34.6012330Z ##[section]Finishing: Post Job Cleanup

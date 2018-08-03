@@ -1,0 +1,87 @@
+additional debugs due to VMXNET3 debugging (no functional changes)
+
+--- a/grub-core/net/ethernet.c	2017-04-05 08:24:46.000000000 +0200
++++ b/grub-core/net/ethernet.c	2017-04-04 15:02:30.263262986 +0200
+***************
+*** 104,109 ****
+--- 104,115 ----
+    eth = (struct etherhdr *) nb->data;
+    type = grub_be_to_cpu16 (eth->type);
+    err = grub_netbuff_pull (nb, sizeof (*eth));
++ 
++ #ifdef M42_DEBUG
++   grub_printf("M42 DEBUG [recv_ether]: grub_net_recv_ethernet_packet() "
++ 	      "got type=%d, err=%d\n",(int)type,(int)err);
++ #endif
++ 
+    if (err)
+      return err;
+  
+***************
+*** 112,124 ****
+--- 118,145 ----
+        llch = (struct llchdr *) nb->data;
+        type = llch->dsap & LLCADDRMASK;
+  
++ #ifdef M42_DEBUG
++       grub_printf("M42 DEBUG [recv_ether]: smalltype case, "
++ 		  "dsap=%d, ssap=%d, ctrl=%d, type=%d\n",
++ 		  (int)(llch->dsap),(int)(llch->ssap),(int)(llch->ctrl),
++ 		  (int)type);
++ #endif
++ 
+        if (llch->dsap == 0xaa && llch->ssap == 0xaa && llch->ctrl == 0x3)
+  	{
+  	  err = grub_netbuff_pull (nb, sizeof (*llch));
++ #ifdef M42_DEBUG
++ 	  grub_printf("M42 DEBUG [recv_ether]: netbuf pull -> rc=%d\n",
++ 		      (int)err);
++ #endif
+  	  if (err)
+  	    return err;
+  	  snaph = (struct snaphdr *) nb->data;
+  	  type = snaph->type;
++ #ifdef M42_DEBUG
++ 	  grub_printf("M42 DEBUG [recv_ether]: snap header type=%d\n",
++ 		      (int)type);
++ #endif
+  	}
+      }
+  
+***************
+*** 127,144 ****
+--- 148,181 ----
+    src_hwaddress.type = GRUB_NET_LINK_LEVEL_PROTOCOL_ETHERNET;
+    grub_memcpy (src_hwaddress.mac, eth->src, sizeof (src_hwaddress.mac));
+  
++ #ifdef M42_DEBUG
++   grub_printf("M42DEBUG [recv_ether]: src %02x:%02x:%02x:%02x:%02x:%02x\n",
++ 	      src_hwaddress.mac[0],src_hwaddress.mac[1],
++ 	      src_hwaddress.mac[2],src_hwaddress.mac[3],
++ 	      src_hwaddress.mac[4],src_hwaddress.mac[5]);
++ #endif
++ 
+    switch (type)
+      {
+        /* ARP packet. */
+      case GRUB_NET_ETHERTYPE_ARP:
++ #ifdef M42_DEBUG
++       grub_printf("M42 DEBUG [recv_ether]: got ARP packet\n");
++ #endif
+        grub_net_arp_receive (nb, card);
+        grub_netbuff_free (nb);
+        return GRUB_ERR_NONE;
+        /* IP packet.  */
+      case GRUB_NET_ETHERTYPE_IP:
+      case GRUB_NET_ETHERTYPE_IP6:
++ #ifdef M42_DEBUG
++       grub_printf("M42 DEBUG [recv_ether]: got IP packet\n");
++ #endif
+        return grub_net_recv_ip_packets (nb, card, &hwaddress, &src_hwaddress);
+      }
+    grub_netbuff_free (nb);
++ #ifdef M42_DEBUG
++   grub_printf("M42 DEBUG [recv_ether]: exit\n");
++ #endif
+    return GRUB_ERR_NONE;
+  }

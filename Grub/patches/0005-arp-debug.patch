@@ -1,0 +1,79 @@
+additional debugs introduced due to VMXNET3 debugging (no functional changes)
+
+--- a/grub-core/net/arp.c-ORIG	2017-04-04 12:36:03.864633216 +0200
++++ b/grub-core/net/arp.c	2017-04-04 16:29:19.522771466 +0200
+@@ -24,6 +24,8 @@
+ #include <grub/net/ip.h>
+ #include <grub/time.h>
+ 
++#undef  M42_DEBUG
++
+ /* ARP header operation codes */
+ enum
+   {
+@@ -98,6 +100,13 @@
+       if (grub_net_link_layer_resolve_check (inf, proto_addr))
+ 	return GRUB_ERR_NONE;
+       pending_req = proto_addr->ipv4;
++
++#ifdef M42_DEBUG
++      grub_printf("M42 DEBUG [arp_send]: setting 'pending' IP to [%d.%d.%d.%d]\n",
++		  (pending_req>>24)&0xff,(pending_req>>16)&0xff,
++		  (pending_req>> 8)&0xff,pending_req&0xff);
++#endif
++
+       have_pending = 0;
+       grub_net_poll_cards (GRUB_NET_INTERVAL + (i * GRUB_NET_INTERVAL_ADDITION),
+                            &have_pending);
+@@ -119,6 +128,14 @@
+   grub_net_link_level_address_t sender_mac_addr;
+   struct grub_net_network_level_interface *inf;
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [arp_recv]: entry, pro=%d, pln=%d, hln=%d "
++	      "packetsize=%d (need %d)\n",
++	      (int)(arp_packet->pro),(int)(arp_packet->pln),
++	      (int)(arp_packet->hln),
++	      (int)(nb->tail-nb->data),(int)sizeof(*arp_packet));
++#endif
++
+   if (arp_packet->pro != grub_cpu_to_be16_compile_time (GRUB_NET_ETHERTYPE_IP)
+       || arp_packet->pln != 4 || arp_packet->hln != 6
+       || nb->tail - nb->data < (int) sizeof (*arp_packet))
+@@ -128,8 +145,24 @@
+   target_addr.type = GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV4;
+   sender_addr.ipv4 = arp_packet->sender_ip;
+   target_addr.ipv4 = arp_packet->recv_ip;
+-  if (arp_packet->sender_ip == pending_req)
++
++#ifdef M42_DEBUG
++  /* Caution: this debug works for IPv4 only! */
++  grub_printf("M42 DEBUG [arp_recv]: sender IP=[%d.%d.%d.%d], "
++	      "target IP=[%d.%d.%d.%d], arp op=%d\n",
++	      (sender_addr.ipv4>>24)&0xff,(sender_addr.ipv4>>16)&0xff,
++	      (sender_addr.ipv4>> 8)&0xff,(sender_addr.ipv4&0xff),
++	      (target_addr.ipv4>>24)&0xff,(target_addr.ipv4>>16)&0xff,
++	      (target_addr.ipv4>> 8)&0xff,(target_addr.ipv4%0xff),
++	      (int)(arp_packet->op));
++#endif
++
++  if (arp_packet->sender_ip == pending_req) {
+     have_pending = 1;
++#ifdef M42_DEBUG
++    grub_printf("M42 DEBUG [arp_recv]: 'have_pending' case\n");
++#endif
++  }
+ 
+   sender_mac_addr.type = GRUB_NET_LINK_LEVEL_PROTOCOL_ETHERNET;
+   grub_memcpy (sender_mac_addr.mac, arp_packet->sender_mac,
+@@ -148,6 +181,10 @@
+ 	grub_uint8_t arp_data[128];
+ 	grub_err_t err;
+ 
++#ifdef M42_DEBUG
++        grub_printf("M42 DEBUG [arp_recv]: got incomoing ARP request, processing\n");
++#endif
++
+ 	nb_reply.head = arp_data;
+ 	nb_reply.end = arp_data + sizeof (arp_data);
+ 	grub_netbuff_clear (&nb_reply);

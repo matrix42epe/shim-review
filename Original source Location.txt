@@ -1,0 +1,3 @@
+location: https://github.com/rhinstaller/shim/ 
+Branch: master
+Commit ID: d9a4c912c0aa72905ca793b555dcb0afb33e3b30

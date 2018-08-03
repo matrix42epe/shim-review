@@ -1,0 +1,58 @@
+From 754fc9cd1c93cf7fab293a8f2742165b0c40bde0 Mon Sep 17 00:00:00 2001
+From: Frank Langel <frank.langel@matrix42.com>
+Date: Mon, 10 Oct 2016 17:31:14 +0200
+Subject: [PATCH] Daniels Patch f. M42Grub
+
+---
+ grub-core/kern/i386/tsc.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/grub-core/kern/i386/tsc.c b/grub-core/kern/i386/tsc.c
+index 3a4cae6..dbfe8b8 100644
+--- a/grub-core/kern/i386/tsc.c
++++ b/grub-core/kern/i386/tsc.c
+@@ -28,8 +28,12 @@
+ #ifdef GRUB_MACHINE_XEN
+ #include <grub/xen.h>
+ #else
++#ifdef GRUB_MACHINE_EFI
++#include <grub/efi/efi.h>
++#else
+ #include <grub/i386/pit.h>
+ #endif
++#endif
+ #include <grub/cpu/io.h>
+ 
+ /* This defines the value TSC had at the epoch (that is, when we calibrated it). */
+@@ -70,6 +74,7 @@ grub_cpu_is_tsc_supported (void)
+ }
+ 
+ #ifndef GRUB_MACHINE_XEN
++#ifndef GRUB_MACHINE_EFI
+ 
+ static void
+ grub_pit_wait (grub_uint16_t tics)
+@@ -98,6 +103,8 @@ grub_pit_wait (grub_uint16_t tics)
+ 	     & ~ (GRUB_PIT_SPK_DATA | GRUB_PIT_SPK_TMR2),
+              GRUB_PIT_SPEAKER_PORT);
+ }
++
++#endif
+ #endif
+ 
+ static grub_uint64_t
+@@ -119,7 +126,11 @@ calibrate_tsc (void)
+   grub_uint64_t end_tsc;
+ 
+   tsc_boot_time = grub_get_tsc ();
++#ifdef GRUB_MACHINE_EFI
++  grub_efi_stall(18206); /* wait/stall for for 18.206 ms */
++#else
+   grub_pit_wait (0xffff);
++#endif
+   end_tsc = grub_get_tsc ();
+ 
+   grub_tsc_rate = grub_divmod64 ((55ULL << 32), end_tsc - tsc_boot_time, 0);
+-- 
+2.7.4
+

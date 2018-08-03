@@ -1,0 +1,12 @@
+2018-05-16T14:17:46.6042520Z ##[section]Starting: Shell Script M42Grub2ApplyPatches.sh
+2018-05-16T14:17:46.6826730Z ==============================================================================
+2018-05-16T14:17:46.6863800Z Task         : Shell Script
+2018-05-16T14:17:46.6902030Z Description  : Run a shell script using bash
+2018-05-16T14:17:46.6937390Z Version      : 2.1.3
+2018-05-16T14:17:46.6972820Z Author       : Microsoft Corporation
+2018-05-16T14:17:46.7008980Z Help         : [More Information](https://go.microsoft.com/fwlink/?LinkID=613738)
+2018-05-16T14:17:46.7045570Z ==============================================================================
+2018-05-16T14:17:47.4217930Z [command]/bin/bash /opt/buildagents/harald_008/_work/2/s/M42Grub2ApplyPatches.sh
+2018-05-16T14:17:50.7029990Z HEAD is now at 103d766 Added first base network boot patch
+2018-05-16T14:17:50.7113730Z ls: cannot access 'patches/*.patch': No such file or directory
+2018-05-16T14:17:50.8057450Z ##[section]Finishing: Shell Script M42Grub2ApplyPatches.sh

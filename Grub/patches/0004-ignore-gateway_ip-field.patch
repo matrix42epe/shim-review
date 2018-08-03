@@ -1,0 +1,23 @@
+--- a/grub-core/net/bootp.c	2016-12-13 17:17:07.676822997 +0100
++++ b/grub-core/net/bootp.c	2016-12-13 17:19:44.525775155 +0100
+@@ -479,6 +479,12 @@ grub_net_process_dhcp_ack (struct grub_n
+   hwaddr.type = GRUB_NET_LINK_LEVEL_PROTOCOL_ETHERNET;
+ 
+   inter = grub_net_add_addr (name, card, &addr, &hwaddr, flags);*/
++#if 0
+++  /* This is likely based on misunderstanding. gateway_ip refers to
+++     address of BOOTP relay and should not be used after BOOTP transaction
+++     is complete.
+++     See RFC1542, 3.4 Interpretation of the 'giaddr' field
+++   */
+   if (bp->gateway_ip)
+     {
+       grub_net_network_level_netaddress_t target;
+@@ -502,6 +508,7 @@ grub_net_process_dhcp_ack (struct grub_n
+       /*grub_net_add_route (name, target, inter);*/
+ 	  grub_net_add_route (inter->name, target, inter);
+     }
++#endif
+ 
+   if (size > OFFSET_OF (boot_file, bp))
+     /*set_env_limn_ro (name, "boot_file", (char *) bp->boot_file,*/

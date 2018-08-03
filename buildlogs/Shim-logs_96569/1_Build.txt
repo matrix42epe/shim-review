@@ -1,0 +1,5 @@
+2018-07-31T16:37:22.0687092Z ##[section]Starting: Expand phase Phase_0
+2018-07-31T16:37:22.0999593Z ContinueOnError: False
+2018-07-31T16:37:22.0999593Z TimeoutInMinutes: 60
+2018-07-31T16:37:22.0999593Z CancelTimeoutInMinutes: 5
+2018-07-31T16:37:22.1155852Z ##[section]Finishing: Expand phase Phase_0

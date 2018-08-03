@@ -1,0 +1,35 @@
+When using the EFI variant of grub_exit(), we want to return to
+the EFI BIOS with a load error to indicate that continuation with
+current boot method is not desired.
+
+Idea behind: hope to convince some nasty EFI BIOS variants to continue
+regular boot sequence if it see's that something went wrong...
+
+FOR TESTING PURPOSES ONLY!
+
+--- a/grub-core/kern/efi/efi.c	2017-04-25 16:04:43.394274451 +0200
++++ b/grub-core/kern/efi/efi.c	2017-04-25 15:18:04.925587111 +0200
+@@ -28,6 +28,9 @@
+ #include <grub/kernel.h>
+ #include <grub/mm.h>
+ 
++#define M42_FIX 1
++
++
+ /* The handle of GRUB itself. Filled in by the startup code.  */
+ grub_efi_handle_t grub_efi_image_handle;
+ 
+@@ -157,8 +160,13 @@
+ grub_exit (void)
+ {
+   grub_efi_fini ();
++#ifdef M42_FIX
++  efi_call_4 (grub_efi_system_table->boot_services->exit,
++              grub_efi_image_handle, GRUB_EFI_LOAD_ERROR, 0, 0);
++#else
+   efi_call_4 (grub_efi_system_table->boot_services->exit,
+               grub_efi_image_handle, GRUB_EFI_SUCCESS, 0, 0);
++#endif
+   for (;;) ;
+ }
+ 

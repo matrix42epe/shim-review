@@ -1,0 +1,1932 @@
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/fs/fshelp.c M42Grub/grub-core/fs/fshelp.c
+--- grub2-2.02~beta2/grub-core/fs/fshelp.c	2013-12-24 17:29:27.000000000 +0100
++++ M42Grub/grub-core/fs/fshelp.c	2017-11-22 11:06:08.081262426 +0100
+@@ -25,6 +25,8 @@
+ #include <grub/dl.h>
+ #include <grub/i18n.h>
+ 
++#undef M42_DEBUG
++
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+ typedef int (*iterate_dir_func) (grub_fshelp_node_t dir,
+@@ -89,6 +91,10 @@
+   ctx->currnode = currroot;
+   ctx->oldnode = currroot;
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [fshelp]: find_file() currpath='%s' called\n",currpath);
++#endif
++
+   for (;;)
+     {
+       int found;
+@@ -102,6 +108,9 @@
+ 	{
+ 	  *currfound = ctx->currnode;
+ 	  ctx->foundtype = ctx->type;
++#ifdef M42_DEBUG
++	  grub_printf("M42 DEBUG [fshelp]: find_file() -> rc=0 [A]\n");
++#endif
+ 	  return 0;
+ 	}
+ 
+@@ -114,6 +123,9 @@
+ 	{
+ 	  free_node (ctx->currnode, ctx);
+ 	  ctx->currnode = 0;
++#ifdef M42_DEBUG
++	  grub_printf("M42 DEBUG [fshelp]: find_file() -> rc=EBADF [B]\n");
++#endif
+ 	  return grub_error (GRUB_ERR_BAD_FILE_TYPE, N_("not a directory"));
+ 	}
+ 
+@@ -123,9 +135,13 @@
+ 	{
+ 	  free_node (ctx->currnode, ctx);
+ 	  ctx->currnode = 0;
+-	  if (grub_errno)
++	  if (grub_errno) {
++#ifdef M42_DEBUG
++	    grub_printf("M42 DEBUG [fshelp]: find_file() -> rc=%d [C]\n",
++			grub_errno);
++#endif
+ 	    return grub_errno;
+-
++	  }
+ 	  break;
+ 	}
+ 
+@@ -142,6 +158,9 @@
+ 	      free_node (ctx->oldnode, ctx);
+ 	      ctx->currnode = 0;
+ 	      ctx->oldnode = 0;
++#ifdef M42_DEBUG
++	      grub_printf("M42 DEBUG [fshelp]: find_file() -> rc=ESYMLINK [D]\n");
++#endif
+ 	      return grub_error (GRUB_ERR_SYMLINK_LOOP,
+ 				 N_("too deep nesting of symlinks"));
+ 	    }
+@@ -154,6 +173,10 @@
+ 	    {
+ 	      free_node (ctx->oldnode, ctx);
+ 	      ctx->oldnode = 0;
++#ifdef M42_DEBUG
++	    grub_printf("M42 DEBUG [fshelp]: find_file() -> rc=%d [E]\n",
++			grub_errno);
++#endif
+ 	      return grub_errno;
+ 	    }
+ 
+@@ -176,6 +199,10 @@
+ 	    {
+ 	      free_node (ctx->oldnode, ctx);
+ 	      ctx->oldnode = 0;
++#ifdef M42_DEBUG
++	      grub_printf("M42 DEBUG [fshelp]: find_file() -> rc=%d [F]\n",
++			  grub_errno);
++#endif
+ 	      return grub_errno;
+ 	    }
+ 	}
+@@ -189,6 +216,10 @@
+       ctx->name = ctx->next;
+     }
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [fshelp]: find_file() -> rc=ENOTFOUND [G]\n");
++#endif
++
+   return grub_error (GRUB_ERR_FILE_NOT_FOUND, N_("file `%s' not found"),
+ 		     ctx->path);
+ }
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/kern/dl.c M42Grub/grub-core/kern/dl.c
+--- grub2-2.02~beta2/grub-core/kern/dl.c	2017-11-21 17:19:07.000000000 +0100
++++ M42Grub/grub-core/kern/dl.c	2017-11-22 11:06:08.421267633 +0100
+@@ -684,6 +684,8 @@
+   void *core = 0;
+   grub_dl_t mod = 0;
+ 
++#if 0 /* MX42 hack!!! */
++
+ #ifdef GRUB_MACHINE_EFI
+   if (grub_efi_secure_boot ())
+     {
+@@ -693,6 +695,8 @@
+     }
+ #endif
+ 
++#endif
++
+   grub_boot_time ("Loading module %s", filename);
+ 
+   file = grub_file_open (filename);
+Only in M42Grub/grub-core/lib/libgcrypt-grub/mpi: ec.c
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/net/bootp.c M42Grub/grub-core/net/bootp.c
+--- grub2-2.02~beta2/grub-core/net/bootp.c	2013-12-24 17:40:31.000000000 +0100
++++ M42Grub/grub-core/net/bootp.c	2017-11-22 11:06:08.949275720 +0100
+@@ -24,6 +24,7 @@
+ #include <grub/net/netbuff.h>
+ #include <grub/net/udp.h>
+ #include <grub/datetime.h>
++#include <grub/time.h>
+ 
+ static char *
+ grub_env_write_readonly (struct grub_env_var *var __attribute__ ((unused)),
+@@ -161,20 +162,310 @@
+ 
+ #define OFFSET_OF(x, y) ((grub_size_t)((grub_uint8_t *)((y)->x) - (grub_uint8_t *)(y)))
+ 
+-struct grub_net_network_level_interface *
+-grub_net_configure_by_dhcp_ack (const char *name,
++
++void grub_net_merge_dhcp_ack (struct grub_net_bootp_packet *target,
++                              struct grub_net_bootp_packet *source)
++{
++  if (source->opcode)
++	target->opcode = source->opcode;
++
++  if (source->hw_type)
++    target->hw_type = source->hw_type;
++
++ if (source->hw_len)
++   target->hw_len = source->hw_len;
++
++ if (source->gate_hops)
++   target->gate_hops = source->gate_hops;
++
++ if (source->ident)
++   target->ident = source->ident;
++
++ if (source->seconds)
++   target->seconds = source->seconds;
++
++ if (source->flags)
++   target->flags = source->flags;
++
++ if (source->client_ip)
++   target->client_ip = source->client_ip;
++
++ if (source->your_ip)
++   target->your_ip = source->your_ip;
++
++ if (source->server_ip)
++   target->server_ip = source->server_ip;
++
++ if (source->gateway_ip)
++   target->gateway_ip = source->gateway_ip;
++
++ if (source->mac_addr)
++   grub_memcpy (&target->mac_addr, &source->mac_addr, 6);
++
++ if (source->server_name[0])
++   grub_memcpy (&target->server_name, &source->server_name, 64);
++
++ if (source->boot_file[0])
++   grub_memcpy (&target->boot_file, &source->boot_file, 128);
++
++ if (source->vendor[0])
++ {
++	// merge vendor string instead of overwriting the target string
++	grub_net_merge_vendor(target, source);
++ }
++}
++
++/**
++ * grub_net_merge_vendor
++ * 
++ * this method merges the vendor strings of source into the target.
++ * if an option with the same type value exists in the source and
++ * in the target, the target option will be overwritten.
++ *
++ * only the following option types will be added because only these
++ * option types are handled later
++ *
++ *   GRUB_NET_BOOTP_NETMASK = 0x01,
++ *   GRUB_NET_BOOTP_ROUTER = 0x03,
++ *   GRUB_NET_BOOTP_DNS = 0x06,
++ *   GRUB_NET_BOOTP_HOSTNAME = 0x0c,
++ *   GRUB_NET_BOOTP_DOMAIN = 0x0f,
++ *   GRUB_NET_BOOTP_ROOT_PATH = 0x11,
++ *   GRUB_NET_BOOTP_EXTENSIONS_PATH = 0x12,
++ *
++ * @param target
++ * 	a pointer to a grub_net_bootp_packet value that contains the
++ * 	vendor string witch should be extended
++ * @param source
++ * 	a pointer to a grub_net_bootp_packet value that contains the
++ * 	vendor string witch should be added
++ */
++void grub_net_merge_vendor(struct grub_net_bootp_packet *target,
++                              struct grub_net_bootp_packet *source)
++{
++	grub_uint8_t		*sourcePtr;			// the pointer to the beginning of the source vendor string
++	grub_uint8_t		*targetPtr;			// the pointer to the beginning of the target vendor string
++	grub_uint8_t		*resultCurrentPtr;	// the pointer to the resulting vendor string (where a new entry should be added)
++	const grub_uint8_t	*resultPtrLimit;	// the pointer to the end of the resulting vendor string to specify the boundary
++	
++	// allocate vendor string depending on source vendor string size
++	grub_uint8_t vendorSize = sizeof(source->vendor);
++	grub_uint8_t *result = grub_malloc(vendorSize);
++	grub_memset (result, 0, vendorSize);
++
++	resultCurrentPtr = &result[0]; // set current pointer to first position
++	resultPtrLimit = &result[0] + vendorSize; // set limit to end position
++	resultPtrLimit--; //we need a 0xff at the last position. so we have to reduce the array limit
++
++	// set source and target vendor strings
++	sourcePtr = source->vendor;
++	targetPtr = target->vendor;
++
++	// set magic cooky entry to the result
++	*resultCurrentPtr++ = GRUB_NET_BOOTP_RFC1048_MAGIC_0;
++	*resultCurrentPtr++ = GRUB_NET_BOOTP_RFC1048_MAGIC_1;
++	*resultCurrentPtr++ = GRUB_NET_BOOTP_RFC1048_MAGIC_2;
++	*resultCurrentPtr++ = GRUB_NET_BOOTP_RFC1048_MAGIC_3;
++
++	// array of option types that should be searched and copied
++	grub_net_bootp_optiontypes_t types[] = 
++	{
++		//GRUB_NET_BOOTP_PAD,
++		GRUB_NET_BOOTP_NETMASK,
++		GRUB_NET_BOOTP_ROUTER,
++		GRUB_NET_BOOTP_DNS,
++		GRUB_NET_BOOTP_HOSTNAME,
++		GRUB_NET_BOOTP_DOMAIN,
++		GRUB_NET_BOOTP_ROOT_PATH,
++		GRUB_NET_BOOTP_EXTENSIONS_PATH
++		//GRUB_NET_BOOTP_END
++	};
++
++	// search each option type in the target string and copy it into the resulting string if found
++	// and search this option type in the source string and overwrite it (if needed) in the resulting string
++	grub_uint8_t typeIndex = 0; // index of the option/tag types to search for
++	for (typeIndex = 0; typeIndex < sizeof(types) / sizeof(types[0]); typeIndex++)
++	{
++		int optionLength = 0;
++		// search option type in target first
++		int optionPos = grub_net_find_dhcpoptiontype(targetPtr, types[typeIndex], vendorSize);
++		if (optionPos >= 0)
++		{
++			// found option type => add it into result
++			optionLength = grub_net_add_dhcpoptiontype(resultCurrentPtr, resultPtrLimit, optionPos, targetPtr);
++		}
++
++		// search option type in source next
++		optionPos = grub_net_find_dhcpoptiontype(sourcePtr, types[typeIndex], vendorSize);
++		if (optionPos >= 0)
++		{
++			// found option type => add it into result (maybe overwrite the existing entry)
++			optionLength = grub_net_add_dhcpoptiontype(resultCurrentPtr, resultPtrLimit, optionPos, sourcePtr);
++		}
++
++		// move pointer to next option position
++		resultCurrentPtr += optionLength;
++	}
++	// setting end option value
++	*resultCurrentPtr++ = GRUB_NET_BOOTP_END /*0xff*/;
++
++	// copy resulting vendor content to target
++	grub_memcpy (&target->vendor, &result[0], vendorSize);
++	grub_free(result);
++	//grub_millisleep(5000);
++}
++
++/**
++ * grub_net_find_dhcpoptiontype
++ *
++ * this method searches the given option type (optionType parameter)
++ * in the vendor string (sourcePtr parameter) and returns the position
++ * of the start of this option entry.
++ *
++ * it checks the first entries of the vendor string that should contain
++ * the magic cooky values (0x63 0x82 0x53 0x63).
++ *
++ * @param sourcePtr 
++ *	a pointer to the vendor string value of the dhcp offer
++ *	that contains the dhcp options (first position of the
++ *	vendor string)
++ * @param optionType 
++ *	an integer value that specifies the option type 
++ *	(e.g. 3 for dhcp option "router")
++ * @param limit an integer value that specifies the length of the source
++ *
++ * @return 
++ * 	an integer value that specifies the position of the option type entry
++ *	in the source, otherwise -1 (if the option is not contained).
++ */
++int grub_net_find_dhcpoptiontype(const grub_uint8_t *sourcePtr, int optionType, int limit)
++{
++	// check magic cooky entry at source. Dhcp option block must start with 0x63 0x82 0x53 0x63
++	if (sourcePtr[0] != GRUB_NET_BOOTP_RFC1048_MAGIC_0
++		|| sourcePtr[1] != GRUB_NET_BOOTP_RFC1048_MAGIC_1
++		|| sourcePtr[2] != GRUB_NET_BOOTP_RFC1048_MAGIC_2
++		|| sourcePtr[3] != GRUB_NET_BOOTP_RFC1048_MAGIC_3)
++	{
++		// source does not start with magic cooky => invalid format => abort search
++		//grub_printf("warning: magic cooky not found at merging in dhcp options (source)\n");
++		return -1;
++	}
++
++	int currentPos = 4; // set start position after magic cooky
++	// search the option type in the source. 
++	// currentPos specifies the current position of the search.
++	// move the current position depending on the current option size entry
++	while (currentPos + 1 < limit)
++	{
++		// get first byte (type value) and second byte for option size
++		grub_uint8_t tagtype = *(sourcePtr + currentPos);
++		// 
++		grub_uint8_t taglength = *(sourcePtr + currentPos + 1) + 2 /*offset (type byte and length byte)*/;
++		
++		// check if we found the end tag (0xff)
++		// or if tag length is set to 0
++		// => abort searching
++		if (taglength == 0 ||
++			tagtype == GRUB_NET_BOOTP_END)
++		{
++			//grub_printf("grub_net_find_dhcpoptiontype: search aborted\n");
++			break;
++		}
++
++		if (optionType == tagtype)
++		{
++			// Found option type
++			// return the current position
++			//grub_printf("grub_net_find_dhcpoptiontype: Found type %d with length %d; currentPos=%d\n", (int) tagtype, (int) taglength, (int) currentPos);
++			return currentPos;
++		}
++		else
++		{
++			// move to next option by adding the tag length to the current position
++			currentPos += taglength;
++		}
++	}
++	// no matching option type found => return -1
++	//grub_printf("grub_net_find_dhcpoptiontype: Tagtype %d not found\n", (int) optionType);
++	return -1;
++}
++
++/**
++ * grub_net_add_dhcpoptiontype
++ *
++ * this method adds a dhcp option to a given vendor string (targetPtr parameter).
++ * the sourcePtr parameter is the pointer to the source vendor string (start position)
++ * and the sourcePos parameter specifies the starting position of the option entry 
++ * to add.
++ *
++ * @param targetPtr
++ *	a pointer to the target vendor string that should be extended.
++ *	the pointer must point to the position where the new option
++ *	should be added into (end of the last added option)
++ * @param targetPtrLimit
++ *	a pointer to the end of the target array. it is used to
++ *	validate the array boundaries
++ * @param sourcePos
++ *	an integer value that specifies the start position in the source 
++ *	vendor string of the option that should be added.
++ * @param sourcePtr
++ *	a pointer to the source vendor string that contains the option
++ *	to add (start position of the array)
++ *
++ * @return 
++ *	an integer value that specifies the size of the added dhcp option 
++ *	(the count of pointer position that must be moved).
++ *	returns 0 if no option was added.
++ */
++int grub_net_add_dhcpoptiontype(grub_uint8_t *targetPtr, const grub_uint8_t *targetPtrLimit, int sourcePos, grub_uint8_t *sourcePtr)
++{
++	if (sourcePos < 0)
++	{
++		// option not found in source => do not add
++		return 0;
++	}
++
++	// get first byte position (type value)
++	grub_uint8_t *tagtypePtr = sourcePtr + sourcePos;
++	// get second byte for option size (add 2 because we need the hole
++	grub_uint8_t taglength = *(tagtypePtr + 1) + 2 /*offset (type byte and length byte)*/;
++ 
++	//grub_printf("grub_net_add_dhcpoptiontype: targetPtrLimit=%ld; tagtypePtr=%ld; taglength=%d\n", (long) targetPtrLimit, (long) tagtypePtr, (int) taglength);
++	
++	// check size to respect boundaries
++	if (targetPtr + taglength < targetPtrLimit)
++	{
++		// copy option into target
++		grub_memcpy(targetPtr, tagtypePtr, taglength);
++		//grub_printf("grub_net_add_dhcpoptiontype: memcpy done\n");
++		return taglength;
++	}
++	else
++	{
++		// target array is out of bounds 
++		grub_printf("warning: array overflow at adding dhcp option (target)\n");
++		return 0;
++	}
++}
++
++/*struct grub_net_network_level_interface* grub_net_configure_by_dhcp_ack (const char *name,
+ 				struct grub_net_card *card,
+ 				grub_net_interface_flags_t flags,
+ 				const struct grub_net_bootp_packet *bp,
+ 				grub_size_t size,
+-				int is_def, char **device, char **path)
++				int is_def, char **device, char **path)*/
++void
++grub_net_process_dhcp_ack (struct grub_net_network_level_interface *inter,
++			   const struct grub_net_bootp_packet *bp,
++			   grub_size_t size,
++			   int is_def, char **device, char **path)
+ {
+-  grub_net_network_level_address_t addr;
++  /*grub_net_network_level_address_t addr;
+   grub_net_link_level_address_t hwaddr;
+-  struct grub_net_network_level_interface *inter;
++  struct grub_net_network_level_interface *inter;*/
+   int mask = -1;
+ 
+-  addr.type = GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV4;
++  /*addr.type = GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV4;
+   addr.ipv4 = bp->your_ip;
+ 
+   if (device)
+@@ -187,7 +478,7 @@
+ 	       : sizeof (hwaddr.mac));
+   hwaddr.type = GRUB_NET_LINK_LEVEL_PROTOCOL_ETHERNET;
+ 
+-  inter = grub_net_add_addr (name, card, &addr, &hwaddr, flags);
++  inter = grub_net_add_addr (name, card, &addr, &hwaddr, flags);*/
+   if (bp->gateway_ip)
+     {
+       grub_net_network_level_netaddress_t target;
+@@ -199,7 +490,8 @@
+       target.ipv4.masksize = 32;
+       gw.type = GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV4;
+       gw.ipv4 = bp->gateway_ip;
+-      rname = grub_xasprintf ("%s:gw", name);
++      /*rname = grub_xasprintf ("%s:gw", name);*/
++	  rname = grub_xasprintf ("%s:gw", inter->name);
+       if (rname)
+ 	grub_net_add_route_gw (rname, target, gw);
+       grub_free (rname);
+@@ -207,14 +499,16 @@
+       target.type = GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV4;
+       target.ipv4.base = bp->gateway_ip;
+       target.ipv4.masksize = 32;
+-      grub_net_add_route (name, target, inter);
++      /*grub_net_add_route (name, target, inter);*/
++	  grub_net_add_route (inter->name, target, inter);
+     }
+ 
+   if (size > OFFSET_OF (boot_file, bp))
+-    set_env_limn_ro (name, "boot_file", (char *) bp->boot_file,
++    /*set_env_limn_ro (name, "boot_file", (char *) bp->boot_file,*/
++	set_env_limn_ro (inter->name, "boot_file", (char *) bp->boot_file,
+ 		     sizeof (bp->boot_file));
+-  if (is_def)
+-    grub_net_default_server = 0;
++  /*if (is_def)
++    grub_net_default_server = 0;*/
+   if (is_def && !grub_net_default_server && bp->server_ip)
+     {
+       grub_net_default_server = grub_xasprintf ("%d.%d.%d.%d",
+@@ -225,11 +519,11 @@
+       grub_print_error ();
+     }
+ 
+-  if (is_def)
++  /*if (is_def)
+     {
+       grub_env_set ("net_default_interface", name);
+       grub_env_export ("net_default_interface");
+-    }
++    }*/
+ 
+   if (device && !*device && bp->server_ip)
+     {
+@@ -243,7 +537,8 @@
+   if (size > OFFSET_OF (server_name, bp)
+       && bp->server_name[0])
+     {
+-      set_env_limn_ro (name, "dhcp_server_name", (char *) bp->server_name,
++      /*set_env_limn_ro (name, "dhcp_server_name", (char *) bp->server_name,*/
++	  set_env_limn_ro (inter->name, "dhcp_server_name", (char *) bp->server_name,
+ 		       sizeof (bp->server_name));
+       if (is_def && !grub_net_default_server)
+ 	{
+@@ -257,7 +552,9 @@
+ 	}
+     }
+ 
+-  if (size > OFFSET_OF (boot_file, bp) && path)
++  /*if (size > OFFSET_OF (boot_file, bp) && path)*/
++  if (size > OFFSET_OF (boot_file, bp) && path && !*path
++      && bp->boot_file[0])
+     {
+       *path = grub_strndup (bp->boot_file, sizeof (bp->boot_file));
+       grub_print_error ();
+@@ -272,9 +569,50 @@
+ 	}
+     }
+   if (size > OFFSET_OF (vendor, bp))
+-    parse_dhcp_vendor (name, &bp->vendor, size - OFFSET_OF (vendor, bp), &mask);
++    /*parse_dhcp_vendor (name, &bp->vendor, size - OFFSET_OF (vendor, bp), &mask);*/
++	parse_dhcp_vendor (inter->name, &bp->vendor, size - OFFSET_OF (vendor, bp), &mask);
+   grub_net_add_ipv4_local (inter, mask);
+-  
++/*JBD->*/
++}
++
++
++struct grub_net_network_level_interface *
++grub_net_configure_by_dhcp_ack (const char *name,
++				struct grub_net_card *card,
++				grub_net_interface_flags_t flags,
++				const struct grub_net_bootp_packet *bp,
++				grub_size_t size,
++				int is_def, char **device, char **path)
++{
++  grub_net_network_level_address_t addr;
++  grub_net_link_level_address_t hwaddr;
++  struct grub_net_network_level_interface *inter;
++
++  addr.type = GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV4;
++  addr.ipv4 = bp->your_ip;
++
++  if (device)
++    *device = 0;
++  if (path)
++    *path = 0;
++
++  grub_memcpy (hwaddr.mac, bp->mac_addr,
++	       bp->hw_len < sizeof (hwaddr.mac) ? bp->hw_len
++	       : sizeof (hwaddr.mac));
++  hwaddr.type = GRUB_NET_LINK_LEVEL_PROTOCOL_ETHERNET;
++
++  inter = grub_net_add_addr (name, card, &addr, &hwaddr, flags);
++
++  if (is_def)
++    {
++      grub_env_set ("net_default_interface", name);
++      grub_env_export ("net_default_interface");
++      grub_net_default_server = 0;
++    }
++
++  grub_net_process_dhcp_ack (inter, bp, size, is_def, device, path);
++
++/*<-JBD*/ 
+   inter->dhcp_ack = grub_malloc (size);
+   if (inter->dhcp_ack)
+     {
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/net/drivers/efi/efinet.c M42Grub/grub-core/net/drivers/efi/efinet.c
+--- grub2-2.02~beta2/grub-core/net/drivers/efi/efinet.c	2017-11-21 17:19:07.000000000 +0100
++++ M42Grub/grub-core/net/drivers/efi/efinet.c	2017-11-22 11:06:08.953275782 +0100
+@@ -23,6 +23,7 @@
+ #include <grub/efi/api.h>
+ #include <grub/efi/efi.h>
+ #include <grub/i18n.h>
++#include <grub/term.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -139,49 +140,49 @@
+      that may compete for packet polling
+    */
+   net = grub_efi_open_protocol (dev->efi_handle, &net_io_guid,
+-				GRUB_EFI_OPEN_PROTOCOL_BY_EXCLUSIVE);
++                                GRUB_EFI_OPEN_PROTOCOL_BY_EXCLUSIVE);
+   if (net)
+     {
+       if (net->mode->state == GRUB_EFI_NETWORK_STOPPED
+-	  && efi_call_1 (net->start, net) != GRUB_EFI_SUCCESS)
+-	return grub_error (GRUB_ERR_NET_NO_CARD, "%s: net start failed",
+-			   dev->name);
++          && efi_call_1 (net->start, net) != GRUB_EFI_SUCCESS)
++        return grub_error (GRUB_ERR_NET_NO_CARD, "%s: net start failed",
++                           dev->name);
+ 
+       if (net->mode->state == GRUB_EFI_NETWORK_STOPPED)
+-	return grub_error (GRUB_ERR_NET_NO_CARD, "%s: card stopped",
+-			   dev->name);
++        return grub_error (GRUB_ERR_NET_NO_CARD, "%s: card stopped",
++                           dev->name);
+ 
+       if (net->mode->state == GRUB_EFI_NETWORK_STARTED
+-	  && efi_call_3 (net->initialize, net, 0, 0) != GRUB_EFI_SUCCESS)
+-	return grub_error (GRUB_ERR_NET_NO_CARD, "%s: net initialize failed",
+-			   dev->name);
++          && efi_call_3 (net->initialize, net, 0, 0) != GRUB_EFI_SUCCESS)
++        return grub_error (GRUB_ERR_NET_NO_CARD, "%s: net initialize failed",
++                           dev->name);
+ 
+       /* Enable hardware receive filters if driver declares support for it.
+-	 We need unicast and broadcast and additionaly all nodes and
+-	 solicited multicast for IPv6. Solicited multicast is per-IPv6
+-	 address and we currently do not have API to do it so simply
+-	 try to enable receive of all multicast packets or evertyhing in
+-	 the worst case (i386 PXE driver always enables promiscuous too).
++         We need unicast and broadcast and additionaly all nodes and
++         solicited multicast for IPv6. Solicited multicast is per-IPv6
++         address and we currently do not have API to do it so simply
++         try to enable receive of all multicast packets or evertyhing in
++         the worst case (i386 PXE driver always enables promiscuous too).
+ 
+-	 This does trust firmware to do what it claims to do.
++         This does trust firmware to do what it claims to do.
+        */
+       if (net->mode->receive_filter_mask)
+-	{
+-	  grub_uint32_t filters = GRUB_EFI_SIMPLE_NETWORK_RECEIVE_UNICAST   |
+-				  GRUB_EFI_SIMPLE_NETWORK_RECEIVE_BROADCAST |
+-				  GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST;
+-
+-	  filters &= net->mode->receive_filter_mask;
+-	  if (!(filters & GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST))
+-	    filters |= (net->mode->receive_filter_mask &
+-			GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS);
++        {
++          grub_uint32_t filters = GRUB_EFI_SIMPLE_NETWORK_RECEIVE_UNICAST   |
++                                  GRUB_EFI_SIMPLE_NETWORK_RECEIVE_BROADCAST |
++                                  GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST;
++
++          filters &= net->mode->receive_filter_mask;
++          if (!(filters & GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST))
++            filters |= (net->mode->receive_filter_mask &
++                        GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS);
+ 
+-	  efi_call_6 (net->receive_filters, net, filters, 0, 0, 0, NULL);
+-	}
++          efi_call_6 (net->receive_filters, net, filters, 0, 0, 0, NULL);
++        }
+ 
+       efi_call_4 (grub_efi_system_table->boot_services->close_protocol,
+-		  dev->efi_net, &net_io_guid,
+-		  grub_efi_image_handle, dev->efi_handle);
++                  dev->efi_net, &net_io_guid,
++                  grub_efi_image_handle, dev->efi_handle);
+       dev->efi_net = net;
+     }
+ 
+@@ -195,8 +196,8 @@
+   efi_call_1 (dev->efi_net->shutdown, dev->efi_net);
+   efi_call_1 (dev->efi_net->stop, dev->efi_net);
+   efi_call_4 (grub_efi_system_table->boot_services->close_protocol,
+-	      dev->efi_net, &net_io_guid,
+-	      grub_efi_image_handle, dev->efi_handle);
++              dev->efi_net, &net_io_guid,
++              grub_efi_image_handle, dev->efi_handle);
+ }
+ 
+ static struct grub_net_card_driver efidriver =
+@@ -233,29 +234,6 @@
+     {
+       grub_efi_simple_network_t *net;
+       struct grub_net_card *card;
+-      grub_efi_device_path_t *dp, *parent = NULL, *child = NULL;
+-
+-      /* EDK2 UEFI PXE driver creates IPv4 and IPv6 messaging devices as
+-	 children of main MAC messaging device. We only need one device with
+-	 bound SNP per physical card, otherwise they compete with each other
+-	 when polling for incoming packets.
+-       */
+-      dp = grub_efi_get_device_path (*handle);
+-      if (!dp)
+-	continue;
+-      for (; ! GRUB_EFI_END_ENTIRE_DEVICE_PATH (dp); dp = GRUB_EFI_NEXT_DEVICE_PATH (dp))
+-	{
+-	  parent = child;
+-	  child = dp;
+-	}
+-      if (child
+-	  && GRUB_EFI_DEVICE_PATH_TYPE (child) == GRUB_EFI_MESSAGING_DEVICE_PATH_TYPE
+-	  && (GRUB_EFI_DEVICE_PATH_SUBTYPE (child) == GRUB_EFI_IPV4_DEVICE_PATH_SUBTYPE
+-	      || GRUB_EFI_DEVICE_PATH_SUBTYPE (child) == GRUB_EFI_IPV6_DEVICE_PATH_SUBTYPE)
+-	  && parent
+-	  && GRUB_EFI_DEVICE_PATH_TYPE (parent) == GRUB_EFI_MESSAGING_DEVICE_PATH_TYPE
+-	  && GRUB_EFI_DEVICE_PATH_SUBTYPE (parent) == GRUB_EFI_MAC_ADDRESS_DEVICE_PATH_SUBTYPE)
+-	continue;
+ 
+       net = grub_efi_open_protocol (*handle, &net_io_guid,
+ 				    GRUB_EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+@@ -311,12 +289,19 @@
+   grub_free (handles);
+ }
+ 
++//static void MyWait(void)
++//{
++//	grub_getkey();
++//}
++
+ static void
+ grub_efi_net_config_real (grub_efi_handle_t hnd, char **device,
+ 			  char **path)
+ {
+   struct grub_net_card *card;
+   grub_efi_device_path_t *dp;
++  struct grub_net_bootp_packet *combined_bootp = NULL;
++	grub_size_t bootpSize =  sizeof (struct grub_net_bootp_packet);
+ 
+   dp = grub_efi_get_device_path (hnd);
+   if (! dp)
+@@ -333,43 +318,43 @@
+     if (! cdp)
+       continue;
+     if (grub_efi_compare_device_paths (dp, cdp) != 0)
+-      {
+-	grub_efi_device_path_t *ldp, *dup_dp, *dup_ldp;
+-	int match;
+-
+-	/* EDK2 UEFI PXE driver creates pseudo devices with type IPv4/IPv6
+-	   as children of Ethernet card and binds PXE and Load File protocols
+-	   to it. Loaded Image Device Path protocol will point to these pseudo
+-	   devices. We skip them when enumerating cards, so here we need to
+-	   find matching MAC device.
+-         */
+-	ldp = grub_efi_find_last_device_path (dp);
+-	if (GRUB_EFI_DEVICE_PATH_TYPE (ldp) != GRUB_EFI_MESSAGING_DEVICE_PATH_TYPE
+-	    || (GRUB_EFI_DEVICE_PATH_SUBTYPE (ldp) != GRUB_EFI_IPV4_DEVICE_PATH_SUBTYPE
+-		&& GRUB_EFI_DEVICE_PATH_SUBTYPE (ldp) != GRUB_EFI_IPV6_DEVICE_PATH_SUBTYPE))
+-	  continue;
+-	dup_dp = grub_efi_duplicate_device_path (dp);
+-	if (!dup_dp)
+-	  continue;
+-	dup_ldp = grub_efi_find_last_device_path (dup_dp);
+-	dup_ldp->type = GRUB_EFI_END_DEVICE_PATH_TYPE;
+-	dup_ldp->subtype = GRUB_EFI_END_ENTIRE_DEVICE_PATH_SUBTYPE;
+-	dup_ldp->length = sizeof (*dup_ldp);
+-	match = grub_efi_compare_device_paths (dup_dp, cdp) == 0;
+-	grub_free (dup_dp);
+-	if (!match)
+-	  continue;
+-      }
++      continue;
+     pxe = grub_efi_open_protocol (hnd, &pxe_io_guid,
+ 				  GRUB_EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+     if (! pxe)
+       continue;
+     pxe_mode = pxe->mode;
+-    grub_net_configure_by_dhcp_ack (card->name, card, 0,
+-				    (struct grub_net_bootp_packet *)
+-				    &pxe_mode->dhcp_ack,
+-				    sizeof (pxe_mode->dhcp_ack),
+-				    1, device, path);
++
++	// check if we got an answer of a PXE proxy (pxe and dhcp are running on different servers and the request will be 
++	// received by both servers via, e.g. ip helper)
++	if (pxe_mode->proxy_offer_received)
++	{
++		//grub_printf("proxy_offer_received\n");
++		combined_bootp = grub_zalloc (bootpSize);
++		grub_net_merge_dhcp_ack (combined_bootp, (struct grub_net_bootp_packet*) pxe_mode->dhcp_ack);
++		grub_net_merge_dhcp_ack (combined_bootp, (struct grub_net_bootp_packet*) pxe_mode->proxy_offer);
++
++		grub_net_configure_by_dhcp_ack (card->name, card, 0, combined_bootp, bootpSize, 1, device, path);
++	}else
++	{
++		// check if we got redirected to another pxe server by the dhcp server
++		if(pxe_mode->pxe_reply_received)
++		{
++			//grub_printf("pxe_reply_received\n");
++			combined_bootp = grub_zalloc (sizeof (*combined_bootp));
++			grub_net_merge_dhcp_ack (combined_bootp, (struct grub_net_bootp_packet*) pxe_mode->dhcp_ack);
++			grub_net_merge_dhcp_ack (combined_bootp, (struct grub_net_bootp_packet*) pxe_mode->pxe_reply);
++
++			grub_net_configure_by_dhcp_ack (card->name, card, 0, combined_bootp, bootpSize, 1, device, path);
++		}else
++		{
++			//grub_printf("normal offer\n");
++			// just a normal answer...
++			grub_net_configure_by_dhcp_ack (card->name, card, 0, (struct grub_net_bootp_packet *) &pxe_mode->dhcp_ack,
++				sizeof(pxe_mode->dhcp_ack), 1, device, path);
++		}
++	}
++	//MyWait();
+     return;
+   }
+ }
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/net/drivers/i386/pc/pxe.c M42Grub/grub-core/net/drivers/i386/pc/pxe.c
+--- grub2-2.02~beta2/grub-core/net/drivers/i386/pc/pxe.c	2013-12-24 17:29:27.000000000 +0100
++++ M42Grub/grub-core/net/drivers/i386/pc/pxe.c	2017-11-22 11:06:08.969276027 +0100
+@@ -359,16 +359,49 @@
+ static void
+ grub_pc_net_config_real (char **device, char **path)
+ {
+-  struct grub_net_bootp_packet *bp;
++  struct grub_net_bootp_packet *bpAck;
++  struct grub_net_bootp_packet *bpReply;
++  struct grub_net_network_level_interface *inter;
++  struct grub_net_bootp_packet *combined_bootp = NULL;
++  grub_size_t bootpSize =  sizeof (struct grub_net_bootp_packet);
+ 
+-  bp = grub_pxe_get_cached (GRUB_PXENV_PACKET_TYPE_DHCP_ACK);
++  bpAck = grub_pxe_get_cached (GRUB_PXENV_PACKET_TYPE_DHCP_ACK);
+ 
+-  if (!bp)
++  if (!bpAck)
+     return;
+-  grub_net_configure_by_dhcp_ack ("pxe", &grub_pxe_card, 0,
+-				  bp, GRUB_PXE_BOOTP_SIZE,
+-				  1, device, path);
+ 
++  /* Boot server PXE options add and override boot file/server */
++  bpReply = grub_pxe_get_cached (GRUB_PXENV_PACKET_TYPE_CACHED_REPLY);
++  
++  if (bpReply)
++   {
++	  /*
++	  We received two acknowledges so we have to merge the values of the
++	  acknowledges. 
++	  
++	  The values of the DHCP acknowledge contains the information of the 
++	  gateway and the acknowledge of the PXE server contains the information 
++	  of the boot file.
++	  */
++	  combined_bootp = grub_zalloc (bootpSize);
++	  grub_net_merge_dhcp_ack (combined_bootp, (struct grub_net_bootp_packet*) bpAck);
++	  grub_net_merge_dhcp_ack (combined_bootp, (struct grub_net_bootp_packet*) bpReply);
++	  bpAck = combined_bootp;
++  }
++  else
++  {
++	  /*
++	  We only received one acknowlege, so we use this one and don't
++	  change the bootp content.
++	  */
++  }
++  
++  inter = grub_net_configure_by_dhcp_ack ("pxe", &grub_pxe_card, 0,
++    bpAck, GRUB_PXE_BOOTP_SIZE,
++    1, device, path);
++
++  grub_net_process_dhcp_ack (inter, bpAck, GRUB_PXE_BOOTP_SIZE,
++    1, device, path);
+ }
+ 
+ static struct grub_preboot *fini_hnd;
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/net/ethernet.c M42Grub/grub-core/net/ethernet.c
+--- grub2-2.02~beta2/grub-core/net/ethernet.c	2013-12-24 17:40:31.000000000 +0100
++++ M42Grub/grub-core/net/ethernet.c	2017-11-22 11:06:08.969276027 +0100
+@@ -28,6 +28,8 @@
+ 
+ #define LLCADDRMASK 0x7f
+ 
++#undef M42_DEBUG
++
+ struct etherhdr
+ {
+   grub_uint8_t dst[6];
+@@ -56,6 +58,9 @@
+ {
+   struct etherhdr *eth;
+   grub_err_t err;
++#ifdef M42_DEBUG
++  static long send_ethernet_packet_count=0;
++#endif
+ 
+   COMPILE_TIME_ASSERT (sizeof (*eth) < GRUB_NET_MAX_LINK_HEADER_SIZE);
+ 
+@@ -76,7 +81,12 @@
+ 	return err;
+       inf->card->opened = 1;
+     }
+-  return inf->card->driver->send (inf->card, nb);
++  err=inf->card->driver->send (inf->card, nb);
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [send_ether]: pkt %08ld, err=%d         \r",
++	      ++send_ethernet_packet_count,(int)err);
++#endif
++  return err;
+ }
+ 
+ grub_err_t
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/net/net.c M42Grub/grub-core/net/net.c
+--- grub2-2.02~beta2/grub-core/net/net.c	2017-11-21 17:19:07.000000000 +0100
++++ M42Grub/grub-core/net/net.c	2017-11-22 11:06:08.977276148 +0100
+@@ -33,6 +33,17 @@
+ #include <grub/bufio.h>
+ #include <grub/kernel.h>
+ 
++#undef  M42_DEBUG
++#define M42_FIX 1
++
++#ifdef M42_FIX
++#ifdef GRUB_MACHINE_EFI
++#include <grub/i386/reboot.h>
++#else
++#include <grub/cpu/reboot.h>
++#endif
++#endif
++
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+ char *grub_net_default_server;
+@@ -1518,6 +1529,10 @@
+   grub_size_t amount, total = 0;
+   int try = 0;
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [net_fs_read_real]: called(), len=%ld\n",(long)len);
++#endif
++
+   while (try <= GRUB_NET_TRIES)
+     {
+       while (net->packs.first)
+@@ -1549,22 +1564,51 @@
+ 	    {
+ 	      if (net->protocol->packets_pulled)
+ 		net->protocol->packets_pulled (file);
++#ifdef M42_DEBUG
++	      grub_printf("M42 DEBUG [net_fs_read_real]: done, total=%ld [A]\n",
++		          (long)total);
++#endif
+ 	      return total;
+ 	    }
+ 	}
++
+       if (net->protocol->packets_pulled)
+ 	net->protocol->packets_pulled (file);
+ 
+       if (!net->eof)
+ 	{
+ 	  try++;
+-	  grub_net_poll_cards (GRUB_NET_INTERVAL +
+-                               (try * GRUB_NET_INTERVAL_ADDITION), &net->stall);
+-        }
+-      else
++
++#ifdef M42_DEBUG
++	  grub_printf("M42 DEBUG [net_fs_read_real]: retry #%d\n",try);
++#endif
++
++#ifdef M42_FIX
++	  /* try to re-ACK after 800+ ms, then every 400 ms */
++	  if (net->protocol->repull && try>2 && !net->stall)
++	    net->protocol->repull(file);
++#endif
++	  grub_net_poll_cards (GRUB_NET_INTERVAL, &net->stall);
++	}
++      else {
++#ifdef M42_DEBUG
++	grub_printf("M42 DEBUG [net_fs_read_real]: done, total=%ld [B]\n",
++		    (long)total);
++#endif
+ 	return total;
++}
+     }
++
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [net_fs_read_real]: timeout, return -1\n");
++#endif
++
+   grub_error (GRUB_ERR_TIMEOUT, N_("timeout reading `%s'"), net->name);
++
++#ifdef M42_FIX
++  grub_reboot();
++#endif
++
+   return -1;
+ }
+ 
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/grub-core/net/tftp.c M42Grub/grub-core/net/tftp.c
+--- grub2-2.02~beta2/grub-core/net/tftp.c	2017-11-21 17:19:07.000000000 +0100
++++ M42Grub/grub-core/net/tftp.c	2017-11-22 11:06:08.977276148 +0100
+@@ -28,6 +28,19 @@
+ #include <grub/priority_queue.h>
+ #include <grub/i18n.h>
+ 
++#undef  M42_DEBUG
++ /*#define M42_DEBUGFIX */
++#undef  M42_DEBUGFIX
++#define M42_FIX 1
++
++#ifdef M42_FIX
++#ifdef GRUB_MACHINE_EFI
++#include <grub/i386/reboot.h>
++#else
++#include <grub/cpu/reboot.h>
++#endif
++#endif
++
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+ /* IP port for the MTFTP server used for Intel's PXE */
+@@ -132,34 +145,77 @@
+ }
+ 
+ static grub_err_t
+-ack (tftp_data_t data, grub_uint64_t block)
++reack (tftp_data_t data, grub_uint64_t block,
++       int logthat __attribute__ ((unused)))
+ {
+   struct tftphdr *tftph_ack;
+   grub_uint8_t nbdata[512];
+   struct grub_net_buff nb_ack;
+   grub_err_t err;
+ 
++#ifdef M42_DEBUG
++  if (logthat)
++    grub_printf("M42 DEBUG [tftp/fix]: send out regular ACK #%ld\n",(long)block);
++#endif
++
+   nb_ack.head = nbdata;
+   nb_ack.end = nbdata + sizeof (nbdata);
+   grub_netbuff_clear (&nb_ack);
+   grub_netbuff_reserve (&nb_ack, 512);
+   err = grub_netbuff_push (&nb_ack, sizeof (tftph_ack->opcode)
+ 			   + sizeof (tftph_ack->u.ack.block));
+-  if (err)
++  if (err) {
++#ifdef M42_DEBUG
++    grub_printf("M42 DEBUG[tftp]: netbuff_push() failed with rc=%d, cannot ACK\n",
++		err);
++#endif
+     return err;
++  }
+ 
+   tftph_ack = (struct tftphdr *) nb_ack.data;
+   tftph_ack->opcode = grub_cpu_to_be16 (TFTP_ACK);
+   tftph_ack->u.ack.block = grub_cpu_to_be16 (block);
+ 
+   err = grub_net_send_udp_packet (data->sock, &nb_ack);
+-  if (err)
++  if (err) {
++#ifdef M42_DEBUG
++    grub_printf("M42 DEBUG[tftp]: UDP packet send failed with rc=%d, cannot ACK\n",
++		err);
++#endif
+     return err;
++  }
+   data->ack_sent = block;
+   return GRUB_ERR_NONE;
+ }
+ 
+ static grub_err_t
++ack (tftp_data_t data, grub_uint64_t block)
++{
++  return reack(data,block,1);
++}
++
++#ifdef M42_FIX
++
++static void tftp_repull(struct grub_file *file)
++/*  __attribute__ ((unused))) */
++{
++  if (file && file->data) {
++#ifdef M42_DEBUGFIX
++    grub_printf("M42 DEBUG[tftp/fix]: resending ACK #%ld\n",
++		(long)(((tftp_data_t)(file->data))->ack_sent));
++#endif
++    reack(file->data,((tftp_data_t)(file->data))->ack_sent,0);
++  }
++#ifdef M42_DEBUGFIX
++  else
++    grub_printf("M42 DEBUG[tftp/fix]: do NOT resend ACK #%ld, data problem\n",
++		(long)(((tftp_data_t)(file->data))->ack_sent));
++#endif
++}
++
++#endif
++
++static grub_err_t
+ tftp_receive (grub_net_udp_socket_t sock __attribute__ ((unused)),
+ 	      struct grub_net_buff *nb,
+ 	      void *f)
+@@ -263,6 +319,9 @@
+ 	     */
+ 	    if (size > data->block_size)
+ 	      {
++#ifdef M42_DEBUG
++		grub_printf("M42 DEBUG[tftp_receive]: \"broken cards\" case\n");
++#endif
+ 		err = grub_netbuff_unput (nb_top, size - data->block_size);
+ 		if (err)
+ 		  return err;
+@@ -386,6 +445,10 @@
+       return grub_errno;
+     }
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [tftp_open]: entering OACK wait loop\n");
++#endif
++
+   /* Receive OACK packet.  */
+   nbd = nb.data;
+   for (i = 0; i < GRUB_NET_TRIES; i++)
+@@ -398,20 +461,37 @@
+ 	  destroy_pq (data);
+ 	  return err;
+ 	}
+-      grub_net_poll_cards (GRUB_NET_INTERVAL + (i * GRUB_NET_INTERVAL_ADDITION),
+-                           &data->have_oack);
++      grub_net_poll_cards (GRUB_NET_INTERVAL, &data->have_oack);
+       if (data->have_oack)
+ 	break;
++#ifdef M42_DEBUG
++      grub_printf("M42 DEBUG [tftp_open]: OACK wait retry #%d\n",i+1);
++#endif
+     }
+ 
+-  if (!data->have_oack)
++  if (!data->have_oack) {
+     grub_error (GRUB_ERR_TIMEOUT, N_("time out opening `%s'"), filename);
+-  else
++#ifdef M42_FIX
++    if (!grub_errno)
++      grub_errno=GRUB_ERR_TIMEOUT;
++#endif
++  }
++  else {
+     grub_error_load (&data->save_err);
++#if 0
++    grub_errno=GRUB_ERR_TIMEOUT;
++#endif
++  }
++
+   if (grub_errno)
+     {
+       grub_net_udp_close (data->sock);
+       destroy_pq (data);
++
++#ifdef M42_FIX
++      grub_reboot();
++#endif
++
+       return grub_errno;
+     }
+ 
+@@ -472,12 +552,64 @@
+   return ack (data, data->block);
+ }
+ 
++#ifdef M42_DEBUG
++
++static grub_err_t
++tftp_debug_open (struct grub_file *file, const char *filename)
++{
++  grub_err_t err;
++
++  grub_printf("M42 DEBUG [tftp]: tftp_open() file '%s'\n",filename);
++  err=tftp_open(file,filename);
++  grub_printf("M42 DEBUG [tftp]: tftp_open() -> rc=%d\n",(int)err);
++  return err;
++}
++
++static grub_err_t
++tftp_debug_close (struct grub_file *file)
++{
++  grub_err_t err;
++
++  grub_printf("M42 DEBUG [tftp]: tftp_close() called\n");
++  err=tftp_close(file);
++  grub_printf("M42_DEBUG [tftp]: tftp_close() -> rc=%d\n",(int)err);
++  return err;
++}
++
++static grub_err_t
++tftp_debug_packets_pulled (struct grub_file *file)
++{
++  grub_err_t err;
++  tftp_data_t data = file->data;
++
++  grub_printf("M42 DEBUG [tftp]: tftp_packets_pulled() called, pcount=%ld, eof=%d, stall=%d, ack_sent=%ld, data_block=%ld\n",
++	      (long)(file->device->net->packs.count),
++	      (int)(file->device->net->eof),
++	      (int)(file->device->net->stall),
++	      (long)(data->ack_sent),(long)(data->block));
++  err=tftp_packets_pulled(file);
++  grub_printf("M42 DEBUG [tftp]: tftp_packets_pulled() -> rc=%d\n",(int)err);
++  return err;
++}
++
++#endif
++
+ static struct grub_net_app_protocol grub_tftp_protocol = 
+   {
+     .name = "tftp",
++#ifdef M42_DEBUG
++    .open = tftp_debug_open,
++    .close = tftp_debug_close,
++    .packets_pulled = tftp_debug_packets_pulled
++#else
+     .open = tftp_open,
+     .close = tftp_close,
+     .packets_pulled = tftp_packets_pulled
++#endif
++#ifdef M42_FIX
++    ,
++    .repull = tftp_repull
++#endif
+   };
+ 
+ GRUB_MOD_INIT (tftp)
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/include/grub/efi/api.h M42Grub/include/grub/efi/api.h
+--- grub2-2.02~beta2/include/grub/efi/api.h	2017-11-21 17:19:07.000000000 +0100
++++ M42Grub/include/grub/efi/api.h	2017-11-22 11:06:09.297281051 +0100
+@@ -1342,12 +1342,45 @@
+ 
+ typedef struct grub_efi_pxe_mode
+ {
++#if 0
+   grub_uint8_t unused[52];
++#else
++  /* MX42 */
++  grub_uint8_t started;
++  grub_uint8_t ipv6_available;
++  grub_uint8_t ipv6_supported;
++  grub_uint8_t using_ipv6;
++  grub_uint8_t bis_supported;
++  grub_uint8_t bis_detected;
++  grub_uint8_t auto_arp;
++  grub_uint8_t send_guid;
++  grub_uint8_t dhcp_discover_valid;
++  grub_uint8_t dhcp_ack_received;
++  grub_uint8_t proxy_offer_received;
++  grub_uint8_t pxe_discover_valid;
++  grub_uint8_t pxe_reply_received;
++  grub_uint8_t pxe_bis_reply_received;
++  grub_uint8_t icmp_error_received;
++  grub_uint8_t tftp_error_received;
++  grub_uint8_t make_callbacks;
++  grub_uint8_t ttl;
++  grub_uint8_t tos;
++#if 0 /* original MX42 code */
++  grub_efi_ip_address_t station_ip;
++  grub_efi_ip_address_t subnet_mask;
++#else /* hack because of bad declaration of grub_efi_ip_address_t */
++  grub_uint32_t station_ip[4];
++  grub_uint32_t subnet_mask[4];
++#endif
++#endif
+   grub_efi_pxe_packet_t dhcp_discover;
+   grub_efi_pxe_packet_t dhcp_ack;
+   grub_efi_pxe_packet_t proxy_offer;
+   grub_efi_pxe_packet_t pxe_discover;
+   grub_efi_pxe_packet_t pxe_reply;
++#if 1
++  grub_efi_pxe_packet_t pxe_bis_reply;
++#endif
+ } grub_efi_pxe_mode_t;
+ 
+ typedef struct grub_efi_pxe
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/include/grub/net.h M42Grub/include/grub/net.h
+--- grub2-2.02~beta2/include/grub/net.h	2017-11-21 17:19:07.000000000 +0100
++++ M42Grub/include/grub/net.h	2017-11-22 11:06:09.365282092 +0100
+@@ -19,6 +19,8 @@
+ #ifndef GRUB_NET_HEADER
+ #define GRUB_NET_HEADER	1
+ 
++#define M42_FIX 1
++
+ #include <grub/types.h>
+ #include <grub/err.h>
+ #include <grub/list.h>
+@@ -252,6 +254,9 @@
+   grub_err_t (*seek) (struct grub_file *file, grub_off_t off);
+   grub_err_t (*close) (struct grub_file *file);
+   grub_err_t (*packets_pulled) (struct grub_file *file);
++#ifdef M42_FIX
++  void (*repull)(struct grub_file *file);
++#endif
+ };
+ 
+ typedef struct grub_net
+@@ -415,7 +420,7 @@
+   grub_net_bootp_mac_addr_t mac_addr;
+   char server_name[64];
+   char boot_file[128];
+-  grub_uint8_t vendor[0];
++  grub_uint8_t vendor[255];
+ } GRUB_PACKED;
+ 
+ #define	GRUB_NET_BOOTP_RFC1048_MAGIC_0	0x63
+@@ -423,7 +428,7 @@
+ #define	GRUB_NET_BOOTP_RFC1048_MAGIC_2	0x53
+ #define	GRUB_NET_BOOTP_RFC1048_MAGIC_3	0x63
+ 
+-enum
++typedef enum grub_net_bootp_optiontypes
+   {
+     GRUB_NET_BOOTP_PAD = 0x00,
+     GRUB_NET_BOOTP_NETMASK = 0x01,
+@@ -434,15 +439,29 @@
+     GRUB_NET_BOOTP_ROOT_PATH = 0x11,
+     GRUB_NET_BOOTP_EXTENSIONS_PATH = 0x12,
+     GRUB_NET_BOOTP_END = 0xff
+-  };
++  }
++	grub_net_bootp_optiontypes_t;
+ 
+-struct grub_net_network_level_interface *
+-grub_net_configure_by_dhcp_ack (const char *name,
++void grub_net_merge_dhcp_ack (struct grub_net_bootp_packet *target, struct grub_net_bootp_packet *source);
++
++void grub_net_merge_vendor(struct grub_net_bootp_packet *target, struct grub_net_bootp_packet *source);
++
++int grub_net_find_dhcpoptiontype(const grub_uint8_t *sourcePtr, int optionType, int limit);
++
++int grub_net_add_dhcpoptiontype(grub_uint8_t *targetPtr, const grub_uint8_t *targetPtrLimit, int sourcePos, grub_uint8_t *sourcePtr);
++
++struct grub_net_network_level_interface* grub_net_configure_by_dhcp_ack (const char *name,
+ 				struct grub_net_card *card,
+ 				grub_net_interface_flags_t flags,
+ 				const struct grub_net_bootp_packet *bp,
+ 				grub_size_t size,
+ 				int is_def, char **device, char **path);
++				
++void
++grub_net_process_dhcp_ack (struct grub_net_network_level_interface *inter,
++			   const struct grub_net_bootp_packet *bp,
++			   grub_size_t size,
++			   int is_def, char **device, char **path);
+ 
+ grub_err_t
+ grub_net_add_ipv4_local (struct grub_net_network_level_interface *inf,
+@@ -530,8 +549,18 @@
+ 
+ extern char *grub_net_default_server;
+ 
++#ifdef M42_FIX
++
++#define GRUB_NET_TRIES 100
++#define GRUB_NET_INTERVAL 400
++
++#else
++
+ #define GRUB_NET_TRIES 40
+ #define GRUB_NET_INTERVAL 400
++
++#endif
++
+ #define GRUB_NET_INTERVAL_ADDITION 20
+ 
+ #endif /* ! GRUB_NET_HEADER */
+Only in grub2-2.02~beta2: .pc
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/po/POTFILES.in M42Grub/po/POTFILES.in
+--- grub2-2.02~beta2/po/POTFILES.in	2013-12-24 21:06:31.000000000 +0100
++++ M42Grub/po/POTFILES.in	2017-11-22 11:06:09.497284114 +0100
+@@ -1,3 +1,498 @@
++./.pc/CVE-2015-8370.patch/grub-core/lib/crypto.c
++./.pc/CVE-2015-8370.patch/grub-core/normal/auth.c
++./.pc/acpihalt-opcodes-1.patch/grub-core/commands/acpihalt.c
++./.pc/acpihalt-opcodes-1.patch/include/grub/acpi.h
++./.pc/acpihalt-opcodes-2.patch/grub-core/commands/acpihalt.c
++./.pc/acpihalt-opcodes-2.patch/include/grub/acpi.h
++./.pc/arm-efi-Reduce-timer-event-frequency-by-10.patch/grub-core/kern/arm/efi/init.c
++./.pc/arm64-set-correct-length-of-device-path-end-entry.patch/grub-core/loader/arm64/linux.c
++./.pc/arp_icmp_oversize_handling.patch/grub-core/net/arp.c
++./.pc/arp_icmp_oversize_handling.patch/grub-core/net/icmp.c
++./.pc/arp_icmp_oversize_handling.patch/grub-core/net/netbuff.c
++./.pc/arp_icmp_oversize_handling.patch/include/grub/net/netbuff.h
++./.pc/blacklist_1440x900x32.patch/grub-core/video/i386/pc/vbe.c
++./.pc/btrfs-endian.patch/grub-core/fs/btrfs.c
++./.pc/check_blocklists_overlap_fix.patch/grub-core/commands/loadenv.c
++./.pc/core_in_fs.patch/util/setup.c
++./.pc/default_grub_d.patch/grub-core/osdep/unix/config.c
++./.pc/disable_floppies.patch/grub-core/kern/emu/hostdisk.c
++./.pc/efi_sanitise_path.patch/grub-core/kern/efi/efi.c
++./.pc/efidisk-device-path-helpers-for-efinet.patch/grub-core/disk/efi/efidisk.c
++./.pc/efidisk-device-path-helpers-for-efinet.patch/grub-core/kern/efi/efi.c
++./.pc/efidisk-device-path-helpers-for-efinet.patch/include/grub/efi/efi.h
++./.pc/efinet-enable-hardware-filters-on-interface.patch/grub-core/net/drivers/efi/efinet.c
++./.pc/efinet-enable-hardware-filters-on-interface.patch/include/grub/efi/api.h
++./.pc/efinet-open-Simple-Network-Protocol-exclusively.patch/grub-core/net/drivers/efi/efinet.c
++./.pc/efinet-skip-virtual-devices-on-enumeration.patch/grub-core/net/drivers/efi/efinet.c
++./.pc/elf_bi_endian.patch/grub-core/kern/elf.c
++./.pc/elf_bi_endian.patch/grub-core/kern/elfXX.c
++./.pc/elf_bi_endian.patch/include/grub/elf.h
++./.pc/fix_disk-module_option_handling.patch/util/grub-install.c
++./.pc/fix_diskfilter_lv_name_dblfree.patch/grub-core/disk/diskfilter.c
++./.pc/freebsd_debugflags_eperm.patch/grub-core/osdep/freebsd/hostdisk.c
++./.pc/gettext_quiet.patch/grub-core/gettext/gettext.c
++./.pc/gfxpayload_dynamic.patch/grub-core/commands/i386/pc/hwmatch.c
++./.pc/grub-install-extra-removable.patch/util/grub-install.c
++./.pc/grub-install-pvxen-paths.patch/util/grub-install.c
++./.pc/grub_legacy_0_based_partitions.patch/util/getroot.c
++./.pc/hostfs_remove_ftm.patch/grub-core/kern/emu/hostfs.c
++./.pc/ieee1275-clear-reset.patch/grub-core/term/terminfo.c
++./.pc/ieee1275-pseries-emulation.patch/grub-core/kern/ieee1275/cmain.c
++./.pc/install_arm64_naming.patch/util/grub-install.c
++./.pc/install_efi_fallback.patch/grub-core/osdep/linux/platform.c
++./.pc/install_efi_ubuntu_flavours.patch/util/grub-install.c
++./.pc/install_locale_langpack.patch/util/grub-install-common.c
++./.pc/install_powerpc_machtypes.patch/grub-core/osdep/basic/platform.c
++./.pc/install_powerpc_machtypes.patch/grub-core/osdep/linux/platform.c
++./.pc/install_powerpc_machtypes.patch/grub-core/osdep/unix/platform.c
++./.pc/install_powerpc_machtypes.patch/grub-core/osdep/windows/platform.c
++./.pc/install_powerpc_machtypes.patch/include/grub/util/install.h
++./.pc/install_powerpc_machtypes.patch/util/grub-install.c
++./.pc/install_signed.patch/util/grub-install.c
++./.pc/install_stage2_confusion.patch/util/grub-install.c
++./.pc/linuxefi.patch/grub-core/kern/efi/mm.c
++./.pc/linuxefi.patch/grub-core/loader/i386/efi/linux.c
++./.pc/linuxefi.patch/include/grub/efi/efi.h
++./.pc/linuxefi.patch/include/grub/i386/linux.h
++./.pc/linuxefi_debug.patch/grub-core/loader/i386/efi/linux.c
++./.pc/linuxefi_non_sb_fallback.patch/grub-core/loader/i386/efi/linux.c
++./.pc/linuxefi_non_sb_fallback.patch/grub-core/loader/i386/linux.c
++./.pc/linuxefi_require_shim.patch/grub-core/loader/i386/efi/linux.c
++./.pc/maybe_quiet.patch/grub-core/kern/main.c
++./.pc/maybe_quiet.patch/grub-core/kern/rescue_reader.c
++./.pc/maybe_quiet.patch/grub-core/normal/main.c
++./.pc/maybe_quiet.patch/grub-core/normal/menu.c
++./.pc/mixed_size_efi.patch/grub-core/osdep/linux/platform.c
++./.pc/mkrescue_arm64_naming.patch/util/grub-mkrescue.c
++./.pc/mkrescue_efi_modules.patch/util/grub-mkrescue.c
++./.pc/net-ramp-up-interval.patch/grub-core/net/arp.c
++./.pc/net-ramp-up-interval.patch/grub-core/net/icmp6.c
++./.pc/net-ramp-up-interval.patch/grub-core/net/net.c
++./.pc/net-ramp-up-interval.patch/grub-core/net/tftp.c
++./.pc/net-ramp-up-interval.patch/include/grub/net.h
++./.pc/net-receive-packets-yield.patch/grub-core/net/net.c
++./.pc/no_insmod_on_sb.patch/grub-core/kern/dl.c
++./.pc/no_insmod_on_sb.patch/grub-core/kern/efi/efi.c
++./.pc/no_insmod_on_sb.patch/include/grub/efi/efi.h
++./.pc/ofdisk_add_sas_disks.patch/grub-core/disk/ieee1275/ofdisk.c
++./.pc/olpc_prefix_hack.patch/grub-core/kern/ieee1275/init.c
++./.pc/platform-none.patch/include/grub/time.h
++./.pc/ppc64el-skip-libgcc.patch/grub-core/kern/compiler-rt.c
++./.pc/ppc64el-skip-libgcc.patch/include/grub/compiler-rt.h
++./.pc/probe-delimiter.patch/grub-core/disk/cryptodisk.c
++./.pc/probe-delimiter.patch/grub-core/disk/diskfilter.c
++./.pc/probe-delimiter.patch/include/grub/cryptodisk.h
++./.pc/probe-delimiter.patch/include/grub/diskfilter.h
++./.pc/probe-delimiter.patch/util/grub-install.c
++./.pc/probe-delimiter.patch/util/grub-probe.c
++./.pc/probe_fusionio.patch/grub-core/osdep/linux/getroot.c
++./.pc/probe_fusionio.patch/util/deviceiter.c
++./.pc/probe_nvme.patch/grub-core/osdep/linux/getroot.c
++./.pc/probe_nvme.patch/util/deviceiter.c
++./.pc/progress_avoid_null_deref.patch/grub-core/lib/progress.c
++./.pc/quick_boot.patch/grub-core/normal/menu.c
++./.pc/remove-unreachable-code-pragmas.patch/grub-core/lib/pbkdf2.c
++./.pc/restore_mkdevicemap.patch/include/grub/util/deviceiter.h
++./.pc/restore_mkdevicemap.patch/util/deviceiter.c
++./.pc/restore_mkdevicemap.patch/util/devicemap.c
++./.pc/restore_mkdevicemap.patch/util/grub-mkdevicemap.c
++./.pc/sleep_shift.patch/grub-core/commands/sleep.c
++./.pc/sleep_shift.patch/grub-core/normal/menu.c
++./.pc/x32.patch/grub-core/kern/x86_64/dl.c
++./.pc/x32.patch/include/grub/x86_64/types.h
++./.pc/xfs-add-inode-size-helpers.patch/grub-core/fs/xfs.c
++./.pc/xfs-crc-fix-symlink.patch/grub-core/fs/xfs.c
++./.pc/xfs-fix-alignment.patch/grub-core/fs/xfs.c
++./.pc/xfs-fix-directory-iteration.patch/grub-core/fs/xfs.c
++./.pc/xfs-simplify-inode-endian-conversion.patch/grub-core/fs/xfs.c
++./.pc/xfs-v5.patch/grub-core/fs/xfs.c
++./.pc/zfs-disk-matching.patch/grub-core/fs/zfs/zfs.c
++./.pc/zfs-embedded-data.patch/grub-core/fs/zfs/zfs.c
++./.pc/zfs-embedded-data.patch/include/grub/zfs/spa.h
++./.pc/zfs-extensible-dataset-large-blocks.patch/grub-core/fs/zfs/zfs.c
++./.pc/zfs-hole-birth.patch/grub-core/fs/zfs/zfs.c
++./.pc/zfs-hole-birth.patch/include/grub/zfs/spa.h
++./.pc/zfs-mzap-lookup-argument-types.patch/grub-core/fs/zfs/zfs.c
++./.pc/zfs-zap-lookup-truncation.patch/grub-core/fs/zfs/zfs.c
++./config-util.h
++./config.h
++./debian/grub-extras/915resolution/915resolution.c
++./debian/grub-extras/disabled/gpxe/include_wrap/assert.h
++./debian/grub-extras/disabled/gpxe/include_wrap/bits/errfile.h
++./debian/grub-extras/disabled/gpxe/include_wrap/bits/uaccess.h
++./debian/grub-extras/disabled/gpxe/include_wrap/byteswap.h
++./debian/grub-extras/disabled/gpxe/include_wrap/config/ioapi.h
++./debian/grub-extras/disabled/gpxe/include_wrap/console.h
++./debian/grub-extras/disabled/gpxe/include_wrap/ctype.h
++./debian/grub-extras/disabled/gpxe/include_wrap/errno.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/device.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/efi/efi_uaccess.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/features.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/io.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/list.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/nap.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/pci.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/timer.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/vsprintf.h
++./debian/grub-extras/disabled/gpxe/include_wrap/gpxe/wrap.h
++./debian/grub-extras/disabled/gpxe/include_wrap/libgen.h
++./debian/grub-extras/disabled/gpxe/include_wrap/limits.h
++./debian/grub-extras/disabled/gpxe/include_wrap/stddef.h
++./debian/grub-extras/disabled/gpxe/include_wrap/stdint.h
++./debian/grub-extras/disabled/gpxe/include_wrap/stdio.h
++./debian/grub-extras/disabled/gpxe/include_wrap/stdlib.h
++./debian/grub-extras/disabled/gpxe/include_wrap/string.h
++./debian/grub-extras/disabled/gpxe/include_wrap/strings.h
++./debian/grub-extras/disabled/gpxe/include_wrap/unistd.h
++./debian/grub-extras/disabled/gpxe/src/core/base64.c
++./debian/grub-extras/disabled/gpxe/src/core/basename.c
++./debian/grub-extras/disabled/gpxe/src/core/bitmap.c
++./debian/grub-extras/disabled/gpxe/src/core/cwuri.c
++./debian/grub-extras/disabled/gpxe/src/core/interface.c
++./debian/grub-extras/disabled/gpxe/src/core/iobuf.c
++./debian/grub-extras/disabled/gpxe/src/core/job.c
++./debian/grub-extras/disabled/gpxe/src/core/linebuf.c
++./debian/grub-extras/disabled/gpxe/src/core/misc.c
++./debian/grub-extras/disabled/gpxe/src/core/nvo.c
++./debian/grub-extras/disabled/gpxe/src/core/open.c
++./debian/grub-extras/disabled/gpxe/src/core/process.c
++./debian/grub-extras/disabled/gpxe/src/core/random.c
++./debian/grub-extras/disabled/gpxe/src/core/refcnt.c
++./debian/grub-extras/disabled/gpxe/src/core/resolv.c
++./debian/grub-extras/disabled/gpxe/src/core/settings.c
++./debian/grub-extras/disabled/gpxe/src/core/uri.c
++./debian/grub-extras/disabled/gpxe/src/core/uuid.c
++./debian/grub-extras/disabled/gpxe/src/core/xfer.c
++./debian/grub-extras/disabled/gpxe/src/drivers/bitbash/bitbash.c
++./debian/grub-extras/disabled/gpxe/src/drivers/bitbash/i2c_bit.c
++./debian/grub-extras/disabled/gpxe/src/drivers/bitbash/spi_bit.c
++./debian/grub-extras/disabled/gpxe/src/drivers/block/scsi.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c509.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c509.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c515.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c529.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c595.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c595.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c5x9.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c90x.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/3c90x.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/amd8111e.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/amd8111e.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_attach.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_caps.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_desc.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_dma.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_eeprom.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_gpio.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_initvals.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_pcu.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_phy.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_qcu.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/ath5k_reset.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/base.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/desc.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/eeprom.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/reg.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/rfbuffer.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ath5k/rfgain.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/atl1e.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/b44.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/b44.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/bnx2.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/bnx2.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/davicom.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/depca.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/dmfe.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/eepro.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/eepro100.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/epic100.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/epic100.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/etherfabric.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/etherfabric.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/etherfabric_nic.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/forcedeth.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ipoib.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/legacy.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/mtd80x.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/natsemi.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/natsemi.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ne2k_isa.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ns83820.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ns8390.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/ns8390.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/pcnet32.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/pnic.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/pnic_api.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/prism2.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/prism2_pci.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/prism2_plx.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/r8169.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/r8169.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/rtl8139.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/sis900.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/sis900.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/smc9000.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/smc9000.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/sundance.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/tlan.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/tlan.h
++./debian/grub-extras/disabled/gpxe/src/drivers/net/tulip.c
++./debian/grub-extras/disabled/gpxe/src/drivers/net/w89c840.c
++./debian/grub-extras/disabled/gpxe/src/drivers/nvs/nvs.c
++./debian/grub-extras/disabled/gpxe/src/drivers/nvs/spi.c
++./debian/grub-extras/disabled/gpxe/src/drivers/nvs/threewire.c
++./debian/grub-extras/disabled/gpxe/src/hci/strerror.c
++./debian/grub-extras/disabled/gpxe/src/include/etherboot.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/acpi.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/aes.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ansiesc.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/aoe.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/api.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/arp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/asn1.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ata.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/base64.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/bitbash.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/bitmap.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/bitops.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/blockdev.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/cbc.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/chap.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/command.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/cpio.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/crypto.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/dhcp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/dhcpopts.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/dhcppkt.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/dns.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/downloader.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/editbox.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/editstring.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/eisa.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/elf.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/errfile.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/errortab.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ethernet.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/fakedhcp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/filter.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ftp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/gdbserial.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/gdbstub.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/gdbudp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/hidemem.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/hmac.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/http.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/i2c.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_cm.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_cmrc.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_mad.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_mcast.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_mi.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_packet.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_pathrec.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_sma.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_smc.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ib_srp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/icmp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/icmp6.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ieee80211.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/if_arp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/if_ether.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/image.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/in.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/infiniband.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/init.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/interface.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/iobuf.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ip.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ip6.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ipoib.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/isa.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/isa_ids.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/isapnp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/iscsi.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/job.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/keys.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/linebuf.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/linux_compat.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/login_ui.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/malloc.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/mca.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/md5.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/memmap.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/monojob.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/net80211.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/netdevice.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/null_nap.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/nvo.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/nvs.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/open.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/pci_io.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/pcibackup.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/posix_io.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/process.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/profile.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/ramdisk.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/rarp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/rc80211.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/refcnt.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/resolv.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/retry.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/rotate.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/rsa.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/sanboot.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/scsi.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/segment.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/serial.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/settings.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/settings_ui.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/shell.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/shell_banner.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/smbios.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/socket.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/spi.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/spi_bit.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/srp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/tables.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/tcp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/tcpip.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/tftp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/threewire.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/tls.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/uaccess.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/udp.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/umalloc.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/uri.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/uuid.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/x509.h
++./debian/grub-extras/disabled/gpxe/src/include/gpxe/xfer.h
++./debian/grub-extras/disabled/gpxe/src/include/nic.h
++./debian/grub-extras/disabled/gpxe/src/net/80211/net80211.c
++./debian/grub-extras/disabled/gpxe/src/net/80211/rc80211.c
++./debian/grub-extras/disabled/gpxe/src/net/aoe.c
++./debian/grub-extras/disabled/gpxe/src/net/arp.c
++./debian/grub-extras/disabled/gpxe/src/net/dhcpopts.c
++./debian/grub-extras/disabled/gpxe/src/net/dhcppkt.c
++./debian/grub-extras/disabled/gpxe/src/net/ethernet.c
++./debian/grub-extras/disabled/gpxe/src/net/fakedhcp.c
++./debian/grub-extras/disabled/gpxe/src/net/icmp.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_cm.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_cmrc.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_mcast.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_mi.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_packet.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_pathrec.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_sma.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_smc.c
++./debian/grub-extras/disabled/gpxe/src/net/infiniband/ib_srp.c
++./debian/grub-extras/disabled/gpxe/src/net/iobpad.c
++./debian/grub-extras/disabled/gpxe/src/net/ipv4.c
++./debian/grub-extras/disabled/gpxe/src/net/netdev_settings.c
++./debian/grub-extras/disabled/gpxe/src/net/netdevice.c
++./debian/grub-extras/disabled/gpxe/src/net/nullnet.c
++./debian/grub-extras/disabled/gpxe/src/net/rarp.c
++./debian/grub-extras/disabled/gpxe/src/net/retry.c
++./debian/grub-extras/disabled/gpxe/src/net/tcp.c
++./debian/grub-extras/disabled/gpxe/src/net/tcp/http.c
++./debian/grub-extras/disabled/gpxe/src/net/tcp/https.c
++./debian/grub-extras/disabled/gpxe/src/net/tcp/iscsi.c
++./debian/grub-extras/disabled/gpxe/src/net/tcpip.c
++./debian/grub-extras/disabled/gpxe/src/net/tls.c
++./debian/grub-extras/disabled/gpxe/src/net/udp.c
++./debian/grub-extras/disabled/gpxe/src/net/udp/dhcp.c
++./debian/grub-extras/disabled/gpxe/src/net/udp/dns.c
++./debian/grub-extras/disabled/gpxe/src/net/udp/slam.c
++./debian/grub-extras/disabled/gpxe/src/net/udp/tftp.c
++./debian/grub-extras/disabled/gpxe/wrap/nic.c
++./debian/grub-extras/disabled/gpxe/wrap/pci.c
++./debian/grub-extras/disabled/gpxe/wrap/wrap.c
++./debian/grub-extras/disabled/zfs/include/grub/zfs/dmu.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/dmu_objset.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/dnode.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/dsl_dataset.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/dsl_dir.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/sa_impl.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/spa.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/uberblock_impl.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/vdev_impl.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zap_impl.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zap_leaf.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zfs.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zfs_acl.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zfs_znode.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zil.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zio.h
++./debian/grub-extras/disabled/zfs/include/grub/zfs/zio_checksum.h
++./debian/grub-extras/disabled/zfs/zfs.c
++./debian/grub-extras/disabled/zfs/zfs_fletcher.c
++./debian/grub-extras/disabled/zfs/zfs_lzjb.c
++./debian/grub-extras/disabled/zfs/zfs_sha256.c
++./debian/grub-extras/disabled/zfs/zfsinfo.c
++./debian/grub-extras/lua/grub_lib.c
++./debian/grub-extras/lua/grub_lib.h
++./debian/grub-extras/lua/grub_lua.h
++./debian/grub-extras/lua/grub_main.c
++./debian/grub-extras/lua/lapi.c
++./debian/grub-extras/lua/lapi.h
++./debian/grub-extras/lua/lauxlib.c
++./debian/grub-extras/lua/lauxlib.h
++./debian/grub-extras/lua/lbaselib.c
++./debian/grub-extras/lua/lcode.c
++./debian/grub-extras/lua/lcode.h
++./debian/grub-extras/lua/ldblib.c
++./debian/grub-extras/lua/ldebug.c
++./debian/grub-extras/lua/ldebug.h
++./debian/grub-extras/lua/ldo.c
++./debian/grub-extras/lua/ldo.h
++./debian/grub-extras/lua/ldump.c
++./debian/grub-extras/lua/lfunc.c
++./debian/grub-extras/lua/lfunc.h
++./debian/grub-extras/lua/lgc.c
++./debian/grub-extras/lua/lgc.h
++./debian/grub-extras/lua/linit.c
++./debian/grub-extras/lua/liolib.c
++./debian/grub-extras/lua/llex.c
++./debian/grub-extras/lua/llex.h
++./debian/grub-extras/lua/llimits.h
++./debian/grub-extras/lua/lmathlib.c
++./debian/grub-extras/lua/lmem.c
++./debian/grub-extras/lua/lmem.h
++./debian/grub-extras/lua/loadlib.c
++./debian/grub-extras/lua/lobject.c
++./debian/grub-extras/lua/lobject.h
++./debian/grub-extras/lua/lopcodes.c
++./debian/grub-extras/lua/lopcodes.h
++./debian/grub-extras/lua/loslib.c
++./debian/grub-extras/lua/lparser.c
++./debian/grub-extras/lua/lparser.h
++./debian/grub-extras/lua/lstate.c
++./debian/grub-extras/lua/lstate.h
++./debian/grub-extras/lua/lstring.c
++./debian/grub-extras/lua/lstring.h
++./debian/grub-extras/lua/lstrlib.c
++./debian/grub-extras/lua/ltable.c
++./debian/grub-extras/lua/ltable.h
++./debian/grub-extras/lua/ltablib.c
++./debian/grub-extras/lua/ltm.c
++./debian/grub-extras/lua/ltm.h
++./debian/grub-extras/lua/lua.h
++./debian/grub-extras/lua/luaconf.h
++./debian/grub-extras/lua/lualib.h
++./debian/grub-extras/lua/lundump.c
++./debian/grub-extras/lua/lundump.h
++./debian/grub-extras/lua/lvm.c
++./debian/grub-extras/lua/lvm.h
++./debian/grub-extras/lua/lzio.c
++./debian/grub-extras/lua/lzio.h
++./debian/grub-extras/ntldr-img/bin2h.c
++./debian/grub-extras/ntldr-img/grubinst.c
++./debian/grub-extras/ntldr-img/utils.c
++./debian/grub-extras/ntldr-img/utils.h
++./debian/grub-extras/ntldr-img/version.h
++./debian/prep-bootdev.c
+ ./grub-core/boot/decompressor/minilib.c
+ ./grub-core/boot/decompressor/none.c
+ ./grub-core/boot/decompressor/xz.c
+@@ -57,6 +552,7 @@
+ ./grub-core/commands/i386/pc/acpi.c
+ ./grub-core/commands/i386/pc/drivemap.c
+ ./grub-core/commands/i386/pc/halt.c
++./grub-core/commands/i386/pc/hwmatch.c
+ ./grub-core/commands/i386/pc/lsapm.c
+ ./grub-core/commands/i386/pc/play.c
+ ./grub-core/commands/i386/pc/sendkey.c
+@@ -355,6 +851,7 @@
+ ./grub-core/kern/arm64/dl.c
+ ./grub-core/kern/arm64/dl_helper.c
+ ./grub-core/kern/command.c
++./grub-core/kern/compiler-rt.c
+ ./grub-core/kern/corecmd.c
+ ./grub-core/kern/device.c
+ ./grub-core/kern/disk.c
+@@ -616,6 +1113,7 @@
+ ./grub-core/loader/i386/bsdXX.c
+ ./grub-core/loader/i386/bsd_pagetable.c
+ ./grub-core/loader/i386/coreboot/chainloader.c
++./grub-core/loader/i386/efi/linux.c
+ ./grub-core/loader/i386/linux.c
+ ./grub-core/loader/i386/multiboot_mbi.c
+ ./grub-core/loader/i386/pc/chainloader.c
+@@ -889,6 +1387,7 @@
+ ./include/grub/cmos.h
+ ./include/grub/color.h
+ ./include/grub/command.h
++./include/grub/compiler-rt.h
+ ./include/grub/crypto.h
+ ./include/grub/cryptodisk.h
+ ./include/grub/cs5536.h
+@@ -1163,6 +1662,7 @@
+ ./include/grub/usbdesc.h
+ ./include/grub/usbserial.h
+ ./include/grub/usbtrans.h
++./include/grub/util/deviceiter.h
+ ./include/grub/util/install.h
+ ./include/grub/util/libnvpair.h
+ ./include/grub/util/libzfs.h
+@@ -1221,6 +1721,8 @@
+ ./tests/printf_unit_test.c
+ ./util/bin2h.c
+ ./util/config.c
++./util/deviceiter.c
++./util/devicemap.c
+ ./util/editenv.c
+ ./util/garbage-gen.c
+ ./util/getroot.c
+@@ -1234,6 +1736,7 @@
+ ./util/grub-macbless.c
+ ./util/grub-macho2img.c
+ ./util/grub-menulst2cfg.c
++./util/grub-mkdevicemap.c
+ ./util/grub-mkfont.c
+ ./util/grub-mkimage.c
+ ./util/grub-mkimagexx.c
+diff -ru '--exclude=.git' '--exclude=.gitignore' '--exclude=Makefile.*' '--exclude=configure*' grub2-2.02~beta2/po/POTFILES-shell.in M42Grub/po/POTFILES-shell.in
+--- grub2-2.02~beta2/po/POTFILES-shell.in	2013-12-24 21:06:31.000000000 +0100
++++ M42Grub/po/POTFILES-shell.in	2017-11-22 11:06:09.497284114 +0100
+@@ -14,5 +14,6 @@
+ util/grub.d/10_xnu.in
+ util/grub.d/20_linux_xen.in
+ util/grub.d/30_os-prober.in
++util/grub.d/30_uefi-firmware.in
+ util/grub.d/40_custom.in
+ util/grub.d/41_custom.in

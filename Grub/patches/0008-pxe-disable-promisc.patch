@@ -1,0 +1,130 @@
+Modified initialization of the UNDI network interface: original grub
+switches network interface to promiscuous mode. When using VMware with
+VMXNET3 driver, this leads to the problem that grub won't get any
+inbound network traffic from the hypervisor. Solution: change of
+initialization - instead of switching to promisc mode, we now configure
+the UNDI receive "filter" to give us all directed, broadcast and
+source-routed packets.
+This change of initialization will probably also solve the problem
+that some customers with heavy network traffic experienced occasional
+TFTP download errors.
+Also, with this modified initialization, some USB-to-ethernet interfaces
+might work better/faster now, since a) amount of transferred data will
+be significantly reduced, and b) the new version should now also be
+capable of working with some cheap USB interfaces that do not support
+promisc mode at all.
+
+--- a/grub-core/net/drivers/i386/pc/pxe.c	2017-04-05 08:24:46.000000000 +0200
++++ b/grub-core/net/drivers/i386/pc/pxe.c	2017-04-04 16:30:48.527834131 +0200
+@@ -31,6 +31,9 @@
+ #include <grub/machine/memory.h>
+ #include <grub/machine/kernel.h>
+ 
++#undef  M42_DEBUG
++#define M42_FIX 1
++
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+ #define SEGMENT(x)	((x) >> 4)
+@@ -174,6 +177,10 @@
+   grub_uint8_t *ptr, *end;
+   struct grub_net_buff *buf;
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [i386 net_recv]: entry\n");
++#endif
++
+   isr = (void *) GRUB_MEMORY_MACHINE_SCRATCH_ADDR;
+ 
+   if (!in_progress)
+@@ -188,6 +195,10 @@
+       if (isr->status)
+ 	{
+ 	  in_progress = 0;
++#ifdef M42_DEBUG
++          grub_printf("M42 DEBUG [i386 net_recv]: exit case 1: "
++		      "isr->status=%d\n",(int)(isr->status));
++#endif
+ 	  return NULL;
+ 	}
+       grub_memset (isr, 0, sizeof (*isr));
+@@ -206,6 +217,11 @@
+       if (isr->status || isr->func_flag == GRUB_PXE_ISR_OUT_DONE)
+ 	{
+ 	  in_progress = 0;
++#ifdef M42_DEBUG
++          grub_printf("M42 DEBUG [i386 net_recv]: exit case 2: "
++		      "isr->status=%d, isr->func_flag=%d\n",
++		      (int)(isr->status),(int)(isr->func_flag));
++#endif
+ 	  return NULL;
+ 	}
+       grub_memset (isr, 0, sizeof (*isr));
+@@ -214,14 +230,21 @@
+     }
+ 
+   buf = grub_netbuff_alloc (isr->frame_len + 2);
+-  if (!buf)
++  if (!buf) {
++#ifdef M42_DEBUG
++     grub_printf("M42 DEBUG [i386 net_recv]: netbuff_alloc failure\n");
++#endif
+     return NULL;
++  }
+   /* Reserve 2 bytes so that 2 + 14/18 bytes of ethernet header is divisible
+      by 4. So that IP header is aligned on 4 bytes. */
+   grub_netbuff_reserve (buf, 2);
+   if (!buf)
+     {
+       grub_netbuff_free (buf);
++#ifdef M42_DEBUG
++      grub_printf("M42 DEBUG [i386 net_recv]: netbuff_reserve failure\n");
++#endif
+       return NULL;
+     }
+   ptr = buf->data;
+@@ -238,6 +261,11 @@
+ 	{
+ 	  in_progress = 1;
+ 	  grub_netbuff_free (buf);
++#ifdef M42_DEBUG
++          grub_printf("M42 DEBUG [i386 net_recv]: exit case 3: "
++		      "isr->status=%d, isr->func_flag=%d\n",
++		      (int)(isr->status),(int)(isr->func_flag));
++#endif
+ 	  return NULL;
+ 	}
+ 
+@@ -246,6 +274,10 @@
+     }
+   in_progress = 1;
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [i386 net_recv]: success, returning buffer\n");
++#endif
++
+   return buf;
+ }
+ 
+@@ -290,9 +322,20 @@
+   struct grub_pxe_undi_open *ou;
+   ou = (void *) GRUB_MEMORY_MACHINE_SCRATCH_ADDR;
+   grub_memset (ou, 0, sizeof (*ou));
+-  ou->pkt_filter = 4;
++
++#ifdef M42_FIX
++  /* M42 update for VMware VMXNET3 compat problem */
++  ou->pkt_filter = 11; /* directed+broadcast+sourcerouted */
++#else
++  ou->pkt_filter = 4;  /* promisc */
++#endif
++
+   grub_pxe_call (GRUB_PXENV_UNDI_OPEN, ou, pxe_rm_entry);
+ 
++#ifdef M42_DEBUG
++  grub_printf("M42 DEBUG [UNDI OPEN]: status=%d\n",ou->status);
++#endif
++
+   if (ou->status)
+     return grub_error (GRUB_ERR_IO, "can't open UNDI");
+   return GRUB_ERR_NONE;

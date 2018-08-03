@@ -1,0 +1,5 @@
+2018-05-16T14:17:28.8037340Z ##[section]Starting: Initialize Job
+2018-05-16T14:17:28.8477210Z Prepare build directory.
+2018-05-16T14:17:29.0040610Z Set build variables.
+2018-05-16T14:17:29.0359470Z Download all required tasks.
+2018-05-16T14:17:29.2035450Z ##[section]Finishing: Initialize Job

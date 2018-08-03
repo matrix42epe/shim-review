@@ -1,0 +1,11 @@
+--- a/grub-core/loader/i386/linux.c	2016-10-25 18:42:38.204981372 +0200
++++ b/grub-core/loader/i386/linux.c	2016-10-25 18:39:54.932484147 +0200
+@@ -721,7 +721,7 @@
+ 		  return GRUB_ERR_NONE;
+ 		}
+ 	      grub_dprintf ("linux", "linuxefi failed (%d)\n", grub_errno);
+-	      grub_errno = GRUB_ERR_NONE;
++	      return grub_errno;
+ 	    }
+ 	}
+     }
